@@ -1,0 +1,9 @@
+{
+  "redirect_count": 3,
+  "final_url": "https://example.com/landing",
+  "has_login_form": true,
+  "uses_eval": false,
+  "final_url_https": true,
+  "vt_flag": false,
+  "page_title": "Example Login Page"
+}
