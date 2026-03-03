@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security config for the QR Quishing Detector.
+
+  Production: only HTTPS is permitted.
+  Emulator development: cleartext is allowed to 10.0.2.2 (localhost alias)
+  so the app can reach the Spring Boot backend during testing.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+
+    <!-- Allow cleartext only for the emulator localhost alias -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
