@@ -15,7 +15,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Pattern;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Extracts security-relevant features from a URL using a headless Chromium
@@ -87,7 +87,7 @@ public class UrlFeatureExtractor {
                     page.waitForLoadState(LoadState.DOMCONTENTLOADED);
 
                     String finalUrl = page.url();
-                    int redirectCount = countRedirects(page, url, finalUrl);
+                    int redirectCount = countRedirects(response);
                     boolean finalUrlHttps = finalUrl.startsWith("https://");
 
                     // Feature: login form detection (password field present)
@@ -174,10 +174,17 @@ public class UrlFeatureExtractor {
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private int countRedirects(Page page, String originalUrl, String finalUrl) {
-        // Playwright does not expose the redirect chain directly; approximate by
-        // comparing the original and final URLs.
-        return originalUrl.equalsIgnoreCase(finalUrl) ? 0 : 1;
+    private int countRedirects(Response finalResponse) {
+        // Walk the redirect chain via Response.request().redirectedFrom()
+        int count = 0;
+        if (finalResponse != null) {
+            Request req = finalResponse.request().redirectedFrom();
+            while (req != null && count <= MAX_REDIRECTS) {
+                count++;
+                req = req.redirectedFrom();
+            }
+        }
+        return count;
     }
 
     /**

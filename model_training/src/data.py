@@ -14,9 +14,9 @@ Usage
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
@@ -31,11 +31,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_URL_RE = re.compile(
-    r"^(https?://)"               # required scheme
-    r"([A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+)$",
-    re.IGNORECASE,
-)
 _MAX_URL_LEN = 2048
 
 
@@ -60,9 +55,14 @@ def preprocess_url(url: str) -> Optional[str]:
     url = url.strip().lower()
     if not url or len(url) > _MAX_URL_LEN:
         return None
-    # Keep URLs that at least start with a scheme; drop obviously malformed
-    # entries (e.g. bare file paths, empty strings, SQL fragments).
-    if not url.startswith(("http://", "https://")):
+    # Use urllib.parse for robust URL validation instead of regex
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return None
+        if not parsed.netloc:
+            return None
+    except ValueError:
         return None
     return url
 

@@ -5,12 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * REST controller exposing the {@code POST /validate} endpoint.
@@ -124,5 +124,16 @@ public class UrlValidatorController {
             return v;
         });
         return state[0] > RATE_LIMIT;
+    }
+
+    /**
+     * Periodically evict stale rate-limit entries (windows older than
+     * {@code RATE_WINDOW_MS}) to prevent unbounded memory growth.
+     * Runs every minute.
+     */
+    @Scheduled(fixedDelay = 60_000L)
+    void evictStaleRateLimitEntries() {
+        long cutoff = Instant.now().toEpochMilli() - RATE_WINDOW_MS;
+        rateLimitMap.entrySet().removeIf(e -> e.getValue()[1] < cutoff);
     }
 }

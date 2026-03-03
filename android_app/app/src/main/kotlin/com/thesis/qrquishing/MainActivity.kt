@@ -31,6 +31,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.FloatBuffer
 import java.util.concurrent.TimeUnit
+import kotlin.math.exp
 
 /**
  * Main activity: scans a QR code, runs TFLite inference, and warns the user
@@ -240,6 +241,10 @@ class MainActivity : AppCompatActivity() {
             val clsId = vocab["[CLS]"] ?: 101
             val sepId = vocab["[SEP]"] ?: 102
 
+            // Character-level tokenization: the TFLite model exported from
+            // train.py embeds a character vocabulary so that the full
+            // WordPiece tokenizer is not needed on-device. Each character
+            // maps to its vocab ID; unknown characters map to [UNK].
             val tokens = url.split("").filter { it.isNotEmpty() }.map { vocab[it] ?: unknownId }
             val ids = IntArray(maxLen) { padId }
             val mask = IntArray(maxLen) { 0 }
@@ -268,8 +273,8 @@ class MainActivity : AppCompatActivity() {
 
             val logits = outputBuffer[0]
             val maxLogit = maxOf(logits[0], logits[1])
-            val expBenign = Math.exp((logits[0] - maxLogit).toDouble()).toFloat()
-            val expMalicious = Math.exp((logits[1] - maxLogit).toDouble()).toFloat()
+            val expBenign = exp((logits[0] - maxLogit).toDouble()).toFloat()
+            val expMalicious = exp((logits[1] - maxLogit).toDouble()).toFloat()
             val sum = expBenign + expMalicious
             val pMalicious = expMalicious / sum
 
