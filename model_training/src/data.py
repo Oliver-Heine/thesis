@@ -1,275 +1,122 @@
-"""
-data.py — Dataset loading and preprocessing for the QR Quishing Detector.
-
-Expects a CSV file with at minimum two columns:
-  - url    : raw URL string
-  - result : integer label (0 = benign, 1 = malicious)
-
-Usage
------
-    from data import build_dataloaders
-    train_loader, val_loader, test_loader = build_dataloaders("config.yaml")
-"""
-
-from __future__ import annotations
-
-import logging
-from pathlib import Path
-from typing import Optional
+from datasets import Dataset, DatasetDict, ClassLabel, load_from_disk
+from utils import logger
+import pandas as pd
+import os
+import re
+import tldextract
 from urllib.parse import urlparse
 
-import numpy as np
-import pandas as pd
-import yaml
-from sklearn.model_selection import train_test_split
-from sklearn.utils import resample
-from torch.utils.data import DataLoader, Dataset
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+def normalize_url(url: str):
 
-logger = logging.getLogger(__name__)
+    url = url.lower().strip()
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-_MAX_URL_LEN = 2048
+    # remove protocol and www for normalization
+    url_clean = re.sub(r"^https?://", "", url)
+    url_clean = re.sub(r"^www\.", "", url_clean)
 
+    # Ensure urlparse sees a scheme, otherwise domain may be misparsed
+    parsed = urlparse("http://" + url_clean)
+    ext = tldextract.extract(url_clean)
 
-# ---------------------------------------------------------------------------
-# URL preprocessing
-# ---------------------------------------------------------------------------
+    tokens = []
 
-def preprocess_url(url: str) -> Optional[str]:
-    """Lowercase and strip a URL; return ``None`` if it is unusable.
+    # subdomain
+    if ext.subdomain:
+        tokens.append("<subdomain>")
+        tokens.extend(ext.subdomain.split("."))
 
-    Parameters
-    ----------
-    url:
-        Raw URL string, possibly dirty.
+    # domain
+    tokens.append("<domain>")
+    tokens.append(ext.domain)
 
-    Returns
-    -------
-    Cleaned URL string or ``None`` if the URL should be discarded.
-    """
-    if not isinstance(url, str):
-        return None
-    url = url.strip().lower()
-    if not url or len(url) > _MAX_URL_LEN:
-        return None
-    # Use urllib.parse for robust URL validation instead of regex
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            return None
-        if not parsed.netloc:
-            return None
-    except ValueError:
-        return None
-    return url
+    # domain extension
+    tokens.append("<suffix>")
+    tokens.extend(ext.suffix.split("."))
 
+    # path
+    if parsed.path and parsed.path != "/":
+        tokens.append("<path>")
+        tokens.extend(re.split(r"[/\-_.?=&]", parsed.path))
 
-# ---------------------------------------------------------------------------
-# Dataset class
-# ---------------------------------------------------------------------------
+    # query
+    if parsed.query:
+        tokens.append("<query>")
+        tokens.extend(re.split(r"[=&]", parsed.query))
 
-class UrlDataset(Dataset):
-    """PyTorch Dataset wrapping tokenized URLs."""
+    return " ".join([t for t in tokens if t])
 
-    def __init__(
-        self,
-        urls: list[str],
-        labels: list[int],
-        tokenizer: PreTrainedTokenizerBase,
-        max_length: int = 128,
-    ) -> None:
-        self.encodings = tokenizer(
-            urls,
+def load_dataset_from_config(dataset_config):
+
+    if os.path.exists("data/splits"):
+        logger.info("Loading existing dataset splits...")
+        return load_from_disk("data/splits")
+
+    logger.info(f"Loading dataset: {dataset_config['path']}")
+
+    dataframe = pd.read_csv(dataset_config["path"])
+
+    # normalize URLs
+    dataframe["url"] = dataframe["url"].apply(normalize_url)
+
+    dataset = Dataset.from_pandas(dataframe)
+
+    dataset = dataset.cast_column("result", ClassLabel(num_classes=2, names=["0", "1"]))
+
+    logger.info(f"Splitting dataset into train, test, and validation...")
+    train_size = dataset_config["train_split"]
+    temp_size = 1 - train_size
+
+    train_test = dataset.train_test_split(
+        test_size=temp_size,
+        seed=42,
+        stratify_by_column="result"
+    )
+
+    train_dataset = train_test["train"]
+    temp_dataset = train_test["test"]
+
+    val_ratio = dataset_config["val_split"] / (dataset_config["val_split"] + dataset_config["test_split"])
+
+    val_test = temp_dataset.train_test_split(
+        test_size=1 - val_ratio,
+        seed=42,
+        stratify_by_column="result"
+    )
+
+    val_dataset = val_test["train"]
+    test_dataset = val_test["test"]
+
+    logger.info("Dataset sizes:")
+    logger.info("Train: %d", len(train_dataset))
+    logger.info("Validation: %d", len(val_dataset))
+    logger.info("Test: %d", len(test_dataset))
+
+    dataset_dict = DatasetDict({
+        "train": train_dataset,
+        "validation": val_dataset,
+        "test": test_dataset
+    })
+
+    dataset_dict.save_to_disk("data/splits")
+
+    return dataset_dict
+
+def tokenize_dataset(dataset, tokenizer):
+
+    def _tokenize(batch):
+        return tokenizer(
+            batch["url"],
             truncation=True,
-            padding="max_length",
-            max_length=max_length,
-            return_tensors="pt",
-        )
-        self.labels = labels
-
-    def __len__(self) -> int:
-        return len(self.labels)
-
-    def __getitem__(self, idx: int) -> dict:
-        item = {key: val[idx] for key, val in self.encodings.items()}
-        item["labels"] = self.labels[idx]
-        return item
-
-
-# ---------------------------------------------------------------------------
-# Loading helpers
-# ---------------------------------------------------------------------------
-
-def load_raw_data(csv_path: str, url_col: str, label_col: str) -> pd.DataFrame:
-    """Load and minimally validate the CSV dataset.
-
-    Parameters
-    ----------
-    csv_path:
-        Path to the CSV file.
-    url_col:
-        Name of the URL column.
-    label_col:
-        Name of the integer label column.
-
-    Returns
-    -------
-    DataFrame with exactly two columns: ``url`` and ``label``.
-
-    Raises
-    ------
-    FileNotFoundError:
-        If ``csv_path`` does not exist.
-    ValueError:
-        If required columns are missing or no valid rows remain after cleaning.
-    """
-    path = Path(csv_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Dataset not found: {path}")
-
-    logger.info("Loading dataset from %s …", path)
-    df = pd.read_csv(path, usecols=[url_col, label_col], dtype={url_col: str, label_col: object})
-
-    if url_col not in df.columns or label_col not in df.columns:
-        raise ValueError(
-            f"CSV must contain columns '{url_col}' and '{label_col}'. "
-            f"Found: {list(df.columns)}"
+            max_length=128
         )
 
-    df = df.rename(columns={url_col: "url", label_col: "label"})
+    tokenized_dataset = dataset.map(_tokenize, batched=True)
 
-    # Drop rows where label is not parseable as int
-    df["label"] = pd.to_numeric(df["label"], errors="coerce")
-    df = df.dropna(subset=["label"])
-    df["label"] = df["label"].astype(int)
+    tokenized_dataset = tokenized_dataset.rename_column("result", "labels")
 
-    # Keep only binary labels
-    df = df[df["label"].isin([0, 1])].copy()
-
-    # Preprocess URLs
-    df["url"] = df["url"].apply(preprocess_url)
-    df = df.dropna(subset=["url"]).reset_index(drop=True)
-
-    if df.empty:
-        raise ValueError("No valid rows remain after preprocessing.")
-
-    logger.info(
-        "Loaded %d rows — benign: %d, malicious: %d",
-        len(df),
-        (df["label"] == 0).sum(),
-        (df["label"] == 1).sum(),
-    )
-    return df
-
-
-def balance_dataset(df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
-    """Undersample the majority class so both classes have equal size.
-
-    Parameters
-    ----------
-    df:
-        DataFrame with ``url`` and ``label`` columns.
-    seed:
-        Random seed for reproducibility.
-
-    Returns
-    -------
-    Balanced DataFrame.
-    """
-    majority_label = int(df["label"].value_counts().idxmax())
-    minority_label = 1 - majority_label
-
-    df_majority = df[df["label"] == majority_label]
-    df_minority = df[df["label"] == minority_label]
-
-    n_minority = len(df_minority)
-    logger.info(
-        "Balancing: undersampling majority class %d from %d → %d rows",
-        majority_label,
-        len(df_majority),
-        n_minority,
+    tokenized_dataset.set_format(
+        "torch",
+        columns=["input_ids", "attention_mask", "labels"]
     )
 
-    df_majority_down = resample(
-        df_majority, replace=False, n_samples=n_minority, random_state=seed
-    )
-    balanced = (
-        pd.concat([df_majority_down, df_minority])
-        .sample(frac=1, random_state=seed)
-        .reset_index(drop=True)
-    )
-    logger.info("Balanced dataset size: %d rows", len(balanced))
-    return balanced
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-def build_dataloaders(
-    config_path: str = "config.yaml",
-) -> tuple[DataLoader, DataLoader, DataLoader]:
-    """Build train / val / test DataLoaders from a config YAML.
-
-    Parameters
-    ----------
-    config_path:
-        Path to ``config.yaml``.
-
-    Returns
-    -------
-    ``(train_loader, val_loader, test_loader)``
-    """
-    with open(config_path, "r", encoding="utf-8") as fh:
-        cfg = yaml.safe_load(fh)
-
-    data_cfg = cfg["data"]
-    train_cfg = cfg["training"]
-    model_name = cfg["models"][0]  # tokenizer from first model in list
-
-    seed = int(train_cfg["seed"])
-    max_length = int(train_cfg["max_length"])
-    batch_size = int(train_cfg["batch_size"])
-
-    df = load_raw_data(data_cfg["path"], data_cfg["url_column"], data_cfg["label_column"])
-    df = balance_dataset(df, seed=seed)
-
-    urls = df["url"].tolist()
-    labels = df["label"].tolist()
-
-    val_size = float(data_cfg["val_split"])
-    test_size = float(data_cfg["test_split"])
-    # First split off test set, then split remainder into train+val
-    relative_val = val_size / (1.0 - test_size)
-
-    X_train_val, X_test, y_train_val, y_test = train_test_split(
-        urls, labels, test_size=test_size, random_state=seed, stratify=labels
-    )
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_train_val,
-        y_train_val,
-        test_size=relative_val,
-        random_state=seed,
-        stratify=y_train_val,
-    )
-
-    logger.info(
-        "Split sizes — train: %d, val: %d, test: %d",
-        len(X_train), len(X_val), len(X_test),
-    )
-
-    logger.info("Loading tokenizer: %s", model_name)
-    tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)
-
-    train_ds = UrlDataset(X_train, y_train, tokenizer, max_length)
-    val_ds = UrlDataset(X_val, y_val, tokenizer, max_length)
-    test_ds = UrlDataset(X_test, y_test, tokenizer, max_length)
-
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-
-    return train_loader, val_loader, test_loader
+    return tokenized_dataset

@@ -1,27 +1,26 @@
 models:
   - distilbert-base-uncased
   - huawei-noah/TinyBERT_General_4L_312D
+  - huawei-noah/TinyBERT_General_6L_768D
   - albert-base-v2
   - google/mobilebert-uncased
 
 training:
   epochs: 3
-  batch_size: 16
+  batch_size: 32
   learning_rate: 2.0e-5
-  max_length: 128
-  threshold: 0.80
+  max_length: 64
+  threshold: tune_after_training
   seed: 42
+  weight_decay: 0.01
+  warmup_ratio: 0.1
 
-data:
-  path: malicious-urls.csv
-  url_column: url
-  label_column: result
+dataset:
+  path: "../balanced_urls.csv"
   train_split: 0.70
   val_split: 0.15
   test_split: 0.15
 
-output:
-  checkpoint_dir: checkpoints/
-  onnx_dir: exports/onnx/
-  tflite_dir: exports/tflite/
-  metrics_csv: results/metrics.csv
+hf_token: <REPLACE_TOKEN>
+hf_username: "OliverHeine/"
+hf_train_version: "_train_v2"
