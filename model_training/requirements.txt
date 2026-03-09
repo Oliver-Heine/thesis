@@ -7,10 +7,10 @@ torchvision
 torchaudio
 
 # Hugging Face Transformers
-transformers>=4.35.1
-datasets>=2.15.0
-evaluate==0.4.6
-accelerate>=0.20.1
+transformers==4.38.2
+datasets==2.18.0
+evaluate==0.4.1
+accelerate==0.27.2
 huggingface-hub>=1.0.1
 
 # Optional: GPU monitoring and utilities

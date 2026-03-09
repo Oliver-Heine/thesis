@@ -1,3 +1,4 @@
+import argparse
 from datasets import Dataset, DatasetDict, ClassLabel, load_from_disk
 from utils import logger
 import pandas as pd
@@ -5,6 +6,8 @@ import os
 import re
 import tldextract
 from urllib.parse import urlparse
+from utils import load_config
+
 
 def normalize_url(url: str):
 
@@ -54,9 +57,6 @@ def load_dataset_from_config(dataset_config):
     logger.info(f"Loading dataset: {dataset_config['path']}")
 
     dataframe = pd.read_csv(dataset_config["path"])
-
-    # normalize URLs
-    dataframe["url"] = dataframe["url"].apply(normalize_url)
 
     dataset = Dataset.from_pandas(dataframe)
 
@@ -120,3 +120,25 @@ def tokenize_dataset(dataset, tokenizer):
     )
 
     return tokenized_dataset
+
+def normalize_and_remove_duplicates(dataset_config):
+    logger.info(f"Loading dataset: {dataset_config['path']}")
+
+    dataframe = pd.read_csv(dataset_config["path"])
+
+    dataframe["normalized"] = dataframe["url"].apply(normalize_url)
+    dataframe = dataframe[dataframe["normalized"].notna()]
+
+    dataframe = dataframe.drop_duplicates(subset="normalized", keep="last")
+
+    dataframe = dataframe[["normalized", "result"]]
+    dataframe = dataframe.rename(columns={"normalized": "url"})
+    dataframe.to_csv("../combined_urls_no_duplicated.csv", index=False)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="../config.yaml")
+    args = parser.parse_args()
+
+    config = load_config(args.config)
+    normalize_and_remove_duplicates(config['dataset'])
