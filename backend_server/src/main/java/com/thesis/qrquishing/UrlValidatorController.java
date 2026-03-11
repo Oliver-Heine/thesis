@@ -1,5 +1,9 @@
 package com.thesis.qrquishing;
 
+import com.thesis.qrquishing.integrations.ai.AIAnalyzer;
+import com.thesis.qrquishing.integrations.ai.GeminiAnalyzer;
+import com.thesis.qrquishing.integrations.ai.OpenaiAnalyzer;
+import com.thesis.qrquishing.integrations.blacklist.TotalVirus;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>Input validation (bean-validation + URL sanity checks)</li>
  *   <li>Per-IP rate limiting (10 requests / 60 s, in-memory)</li>
  *   <li>Feature extraction via {@link UrlFeatureExtractor} (Playwright)</li>
- *   <li>LLM analysis via {@link LlmAnalyzer} (OpenAI)</li>
+ *   <li>LLM analysis via {@link OpenaiAnalyzer} (OpenAI)</li>
  * </ol>
  */
 @RestController
@@ -33,14 +37,16 @@ public class UrlValidatorController {
     private static final long RATE_WINDOW_MS = 60_000L;
 
     private final UrlFeatureExtractor featureExtractor;
-    private final LlmAnalyzer llmAnalyzer;
+    private final AIAnalyzer aiAnalyzer;
+    private final TotalVirus totalVirus;
 
     /** Per-IP sliding-window counters: IP → [count, windowStartEpochMs] */
     private final ConcurrentHashMap<String, long[]> rateLimitMap = new ConcurrentHashMap<>();
 
-    public UrlValidatorController(UrlFeatureExtractor featureExtractor, LlmAnalyzer llmAnalyzer) {
+    public UrlValidatorController(UrlFeatureExtractor featureExtractor, GeminiAnalyzer aiAnalyzer, TotalVirus totalVirus) {
         this.featureExtractor = featureExtractor;
-        this.llmAnalyzer = llmAnalyzer;
+        this.aiAnalyzer = aiAnalyzer;
+        this.totalVirus = totalVirus;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -63,9 +69,14 @@ public class UrlValidatorController {
         String url = request.url().strip();
         log.info("Validating URL from {}: {}", clientIp, url);
 
+//        if (totalVirus.checkUrl(url)) {
+//            log.warn("VirusTotal check failed for {}: URL is malicious", url);
+//            return ResponseEntity.ok(new ValidationResponse("malicious", 1.0, Map.of()));
+//        }
+
         try {
             UrlFeatures features = featureExtractor.extract(url);
-            ValidationResponse response = llmAnalyzer.analyze(url, features);
+            ValidationResponse response = aiAnalyzer.analyze(url, features);
             log.info("Result for {}: verdict={}, confidence={}", url, response.verdict(), response.confidence());
             return ResponseEntity.ok(response);
 
@@ -79,7 +90,7 @@ public class UrlValidatorController {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                     .body(Map.of("error", "Could not retrieve URL features."));
 
-        } catch (LlmAnalyzer.LlmException e) {
+        } catch (OpenaiAnalyzer.LlmException e) {
             log.error("LLM analysis failed: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(Map.of("error", "Analysis service temporarily unavailable."));
