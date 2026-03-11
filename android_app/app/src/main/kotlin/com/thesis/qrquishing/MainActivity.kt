@@ -2,6 +2,7 @@ package com.thesis.qrquishing
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -28,10 +29,17 @@ import org.json.JSONObject
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
 import java.io.BufferedReader
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.nio.FloatBuffer
 import java.util.concurrent.TimeUnit
 import kotlin.math.exp
+import org.pytorch.IValue
+import org.pytorch.Module
+import org.pytorch.Tensor
+import org.tensorflow.lite.Tensor
+
 
 /**
  * Main activity: scans a QR code, runs TFLite inference, and warns the user
@@ -92,7 +100,6 @@ class MainActivity : AppCompatActivity() {
         bannerWarning.visibility = View.GONE
 
         loadModel()
-        loadVocab()
 
         findViewById<View>(R.id.btnScan).setOnClickListener { checkCameraAndScan() }
     }
@@ -110,31 +117,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadModel() {
         try {
-            val modelBuffer = FileUtil.loadMappedFile(this, "model.tflite")
-            val options = Interpreter.Options().apply { numThreads = 2 }
-            tflite = Interpreter(modelBuffer, options)
-            Log.i(TAG, "TFLite model loaded")
+            module = Module.load(assetFilePath(this, "distilbert_traced.pt"))
+            Log.i(TAG, "TorchScript model loaded")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load TFLite model", e)
+            Log.e(TAG, "Failed to load TorchScript model", e)
             showErrorDialog("Model load failed", "Could not load the on-device model: ${e.message}")
         }
     }
 
-    private fun loadVocab() {
-        try {
-            val mutableVocab = mutableMapOf<String, Int>()
-            assets.open("vocab.txt").use { stream ->
-                BufferedReader(InputStreamReader(stream))
-                    .lineSequence()
-                    .forEachIndexed { idx, line ->
-                        mutableVocab[line.trim()] = idx
-                    }
+    // Helper function to copy from assets to internal storage
+    private fun assetFilePath(context: Context, assetName: String): String {
+        val file = File(context.filesDir, assetName)
+        if (!file.exists()) {
+            context.assets.open(assetName).use { input ->
+                FileOutputStream(file).use { output ->
+                    input.copyTo(output)
+                }
             }
-            vocab = mutableVocab
-            Log.i(TAG, "Vocab loaded: ${vocab.size} tokens")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load vocab", e)
         }
+        return file.absolutePath
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -231,7 +232,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Tokenize the URL and run TFLite classification. */
     private fun runLocalInference(url: String): Pair<String, Float> {
-        if (!::tflite.isInitialized || !::vocab.isInitialized) {
+        if (!::module.isInitialized || !::vocab.isInitialized) {
             Log.w(TAG, "Model or vocab not ready")
             return Pair("UNCERTAIN", 0f)
         }
@@ -243,37 +244,33 @@ class MainActivity : AppCompatActivity() {
             val clsId = vocab["[CLS]"] ?: 101
             val sepId = vocab["[SEP]"] ?: 102
 
-            // Character-level tokenization: the TFLite model exported from
-            // train.py embeds a character vocabulary so that the full
-            // WordPiece tokenizer is not needed on-device. Each character
-            // maps to its vocab ID; unknown characters map to [UNK].
+            // Character-level tokenization
             val tokens = url.split("").filter { it.isNotEmpty() }.map { vocab[it] ?: unknownId }
-            val ids = IntArray(maxLen) { padId }
-            val mask = IntArray(maxLen) { 0 }
+            val ids = LongArray(maxLen) { padId.toLong() }
+            val mask = LongArray(maxLen) { 0L }
 
-            ids[0] = clsId
-            mask[0] = 1
+            ids[0] = clsId.toLong()
+            mask[0] = 1L
             val contentLen = minOf(tokens.size, maxLen - 2)
             for (i in 0 until contentLen) {
-                ids[i + 1] = tokens[i]
-                mask[i + 1] = 1
+                ids[i + 1] = tokens[i].toLong()
+                mask[i + 1] = 1L
             }
             val endIdx = contentLen + 1
             if (endIdx < maxLen) {
-                ids[endIdx] = sepId
-                mask[endIdx] = 1
+                ids[endIdx] = sepId.toLong()
+                mask[endIdx] = 1L
             }
 
-            val inputIds = Array(1) { ids }
-            val attentionMask = Array(1) { mask }
-            val outputBuffer = Array(1) { FloatArray(2) }
+            // Convert inputs to PyTorch tensors
+            val inputIdsTensor = Tensor.fromBlob(ids, longArrayOf(1, maxLen))
+            val attentionMaskTensor = Tensor.fromBlob(mask, longArrayOf(1, maxLen))
 
-            tflite.runForMultipleInputsOutputs(
-                arrayOf(inputIds, attentionMask),
-                mapOf(0 to outputBuffer)
-            )
+            // Forward pass through TorchScript model
+            val output = module.forward(IValue.listFrom(IValue.from(inputIdsTensor), IValue.from(attentionMaskTensor)))
+            val logits = output.toTensor().dataAsFloatArray
 
-            val logits = outputBuffer[0]
+            // Softmax calculation
             val maxLogit = maxOf(logits[0], logits[1])
             val expBenign = exp((logits[0] - maxLogit).toDouble()).toFloat()
             val expMalicious = exp((logits[1] - maxLogit).toDouble()).toFloat()
@@ -285,6 +282,7 @@ class MainActivity : AppCompatActivity() {
                 (1f - pMalicious) >= CONFIDENCE_THRESHOLD -> "BENIGN"
                 else -> "UNCERTAIN"
             }
+
             Pair(verdict, pMalicious)
         } catch (e: Exception) {
             Log.e(TAG, "Inference error", e)

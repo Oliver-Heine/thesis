@@ -13,8 +13,10 @@ coroutines                 = "1.7.3"
 junit                      = "4.13.2"
 androidxTestExtJunit       = "1.1.5"
 espresso                   = "3.5.1"
+pytorch                    = "2.2.0"
 
 [libraries]
+pytorch-android             = { group = "org.pytorch", name = "pytorch_android", version.ref = "pytorch" }
 androidx-core-ktx          = { group = "androidx.core",           name = "core-ktx",                      version.ref = "coreKtx" }
 androidx-appcompat         = { group = "androidx.appcompat",      name = "appcompat",                     version.ref = "appcompat" }
 material                   = { group = "com.google.android.material", name = "material",                  version.ref = "material" }

@@ -49,6 +49,9 @@ android {
 
 dependencies {
     // AndroidX Core
+    // Source: https://mvnrepository.com/artifact/org.pytorch/pytorch_android
+    implementation("org.pytorch:pytorch_android:2.1.0")
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
