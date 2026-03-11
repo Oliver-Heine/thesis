@@ -1,0 +1,15 @@
+Evaluation Results
+-------------------
+Accuracy:     0.9637
+Precision:    0.9648
+Recall:       0.9557
+F1 Score:     0.9602
+Specificity:  0.9705
+AUC:          0.9945
+Avg Precision:0.9939
+
+Confusion Matrix
+TP: 50226
+TN: 60280
+FP: 1835
+FN: 2327

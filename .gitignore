@@ -9,6 +9,11 @@ __MACOSX/
 .Spotlight-V100
 .Trashes
 
+model_training/src/data/splits/train/
+model_training/src/data/splits/validation/cache
+
+
+
 # ──────────────────────────────
 # Python
 # ──────────────────────────────

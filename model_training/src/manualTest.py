@@ -15,6 +15,9 @@ def load_model(model_name):
 
 def predict(url, tokenizer, model):
     inputs = tokenizer(url, return_tensors="pt", truncation=True, max_length=128)
+    inputs.pop("token_type_ids", None)
+
+    inputs.pop("token_type_ids", None)
 
     with torch.no_grad():
         outputs = model(**inputs)
@@ -28,7 +31,7 @@ def predict(url, tokenizer, model):
 
 def main(config_path: str):
     config = load_config(config_path)
-    model_name = config["hf_username"] + config["models"][1] + config["hf_train_version"] # or local path
+    model_name = config["hf_username"] + config["models"][0] + config["hf_train_version"] # or local path
 
     tokenizer, model = load_model(model_name)
 
