@@ -58,8 +58,11 @@ dependencies {
     implementation(libs.zxing.android.embedded)
 
     // TensorFlow Lite
-    implementation(libs.tensorflow.lite)
-    implementation(libs.tensorflow.lite.support)
+//    implementation(libs.tensorflow.lite)
+//    implementation(libs.tensorflow.lite.support)
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.14.0")
 
     // Networking
     implementation(libs.okhttp)
