@@ -273,14 +273,16 @@ def main(config_path):
 
     for model_name in config["models"]:
 
-        # Convert model name to local path format (replace / with _)
-        local_model_name = model_name.replace("/", "_")
-        local_model_path = f"output/{local_model_name}{hf_train_version}"
+        hf_model = (
+            config["hf_username"]
+            + model_name
+            + hf_train_version
+        )
 
         logging.info("\n================================")
-        logging.info(f"Evaluating: {local_model_path}")
+        logging.info(f"Evaluating: {hf_model}")
 
-        tokenizer, model = load_model(local_model_path, device)
+        tokenizer, model = load_model(hf_model, device)
 
         labels, preds, probs = evaluate(model, tokenizer, test_dataset, device, model_name, hf_train_version)
 

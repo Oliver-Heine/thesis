@@ -19,6 +19,8 @@ def predict(url, tokenizer, model):
 
     inputs.pop("token_type_ids", None)
 
+    inputs.pop("token_type_ids", None)
+
     with torch.no_grad():
         outputs = model(**inputs)
 
