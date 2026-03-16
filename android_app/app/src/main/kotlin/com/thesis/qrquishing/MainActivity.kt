@@ -124,9 +124,11 @@ class MainActivity : AppCompatActivity() {
         try {
             val mutableVocab = mutableMapOf<String, Int>()
             assets.open("vocab.txt").use { stream ->
-                BufferedReader(InputStreamReader(stream)).forEachIndexed { idx, line ->
-                    mutableVocab[line.trim()] = idx
-                }
+                BufferedReader(InputStreamReader(stream))
+                    .lineSequence()
+                    .forEachIndexed { idx, line ->
+                        mutableVocab[line.trim()] = idx
+                    }
             }
             vocab = mutableVocab
             Log.i(TAG, "Vocab loaded: ${vocab.size} tokens")
