@@ -284,7 +284,7 @@ def main(config_path):
         plot_roc(labels, probs, model_name, hf_train_version)
         plot_precision_recall(labels, probs, model_name, hf_train_version)
 
-    save_summary_metrics(config)
+    # save_summary_metrics(config)
 
 
 if __name__ == "__main__":
