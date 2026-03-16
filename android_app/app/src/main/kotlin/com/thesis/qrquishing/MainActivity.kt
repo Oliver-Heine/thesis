@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadModel() {
         try {
-            val modelBuffer = FileUtil.loadMappedFile(this, "model.tflite")
+            val modelBuffer = FileUtil.loadMappedFile(this, "distilbert_model.tflite")
             val options = Interpreter.Options().apply { numThreads = 2 }
             tflite = Interpreter(modelBuffer, options)
             Log.i(TAG, "TFLite model loaded")
