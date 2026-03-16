@@ -16,11 +16,11 @@ training:
   warmup_ratio: 0.1
 
 dataset:
-  path: "../combined_urls_no_duplicated.csv"
+  path: "../combined_urls.csv"
   train_split: 0.70
   val_split: 0.15
   test_split: 0.15
 
-hf_token: <REPLACE_TOKEN>
+hf_token: "very_secret_token"
 hf_username: "OliverHeine/"
 hf_train_version: "_train_v2"

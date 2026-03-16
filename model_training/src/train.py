@@ -1,3 +1,5 @@
+import inspect
+
 from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 
 def train(model, tokenized_dataset, tokenizer, training_config, model_name, train_version, output_dir="fine-tuned-models"):
@@ -5,9 +7,8 @@ def train(model, tokenized_dataset, tokenizer, training_config, model_name, trai
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
     # Define Hugging Face training arguments
-    training_args = TrainingArguments(
+    training_args_kwargs = dict(
         output_dir=output_dir,
-        evaluation_strategy="epoch",
         save_strategy="epoch",
         learning_rate=training_config["learning_rate"],
         per_device_train_batch_size=training_config["batch_size"],
@@ -22,15 +23,32 @@ def train(model, tokenized_dataset, tokenizer, training_config, model_name, trai
         hub_model_id="OliverHeine/" + model_name + train_version
     )
 
+    # transformers>=5 uses `eval_strategy`, older versions use `evaluation_strategy`
+    training_args_params = inspect.signature(TrainingArguments.__init__).parameters
+    if "eval_strategy" in training_args_params:
+        training_args_kwargs["eval_strategy"] = "epoch"
+    else:
+        training_args_kwargs["evaluation_strategy"] = "epoch"
+
+    training_args = TrainingArguments(**training_args_kwargs)
+
     # Initialize Trainer
-    trainer = Trainer(
+    trainer_kwargs = dict(
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset["train"],
         eval_dataset=tokenized_dataset["validation"],
-        tokenizer=tokenizer,
         data_collator=data_collator
     )
+
+    # transformers>=5 uses `processing_class`, older versions use `tokenizer`
+    trainer_params = inspect.signature(Trainer.__init__).parameters
+    if "processing_class" in trainer_params:
+        trainer_kwargs["processing_class"] = tokenizer
+    else:
+        trainer_kwargs["tokenizer"] = tokenizer
+
+    trainer = Trainer(**trainer_kwargs)
 
     trainer.train()
     return trainer

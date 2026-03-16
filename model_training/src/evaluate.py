@@ -37,8 +37,14 @@ def get_device():
         return torch.device("cpu")
 
 def load_model(model_name, device):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    # Convert to absolute path if it's a local path
+    if os.path.exists(model_name):
+        model_path = os.path.abspath(model_name)
+    else:
+        model_path = model_name
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForSequenceClassification.from_pretrained(model_path)
 
     model.to(device)
     model.eval()
@@ -284,7 +290,7 @@ def main(config_path):
         plot_roc(labels, probs, model_name, hf_train_version)
         plot_precision_recall(labels, probs, model_name, hf_train_version)
 
-    # save_summary_metrics(config)
+    save_summary_metrics(config)
 
 
 if __name__ == "__main__":

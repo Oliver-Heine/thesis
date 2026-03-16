@@ -15,6 +15,9 @@ def load_model(model_name):
 
 def predict(url, tokenizer, model):
     inputs = tokenizer(url, return_tensors="pt", truncation=True, max_length=128)
+    inputs.pop("token_type_ids", None)
+
+    inputs.pop("token_type_ids", None)
 
     inputs.pop("token_type_ids", None)
 
