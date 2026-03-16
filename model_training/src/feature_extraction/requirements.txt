@@ -1,0 +1,5 @@
+aiohttp
+tldextract
+beautifulsoup4
+whois
+playwright
