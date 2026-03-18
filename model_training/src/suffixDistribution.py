@@ -31,6 +31,18 @@ def count_suffixes_and_remove_duplicates(dataset_config):
     logger.info(f"Loading dataset: {dataset_config['path']}")
 
     dataframe = pd.read_csv(dataset_config["path"])
+    # Normalize header names to handle inputs like "id, url".
+    dataframe.columns = [str(column).strip().lower() for column in dataframe.columns]
+
+    if "url" not in dataframe.columns:
+        raise ValueError(
+            f"Expected a 'url' column in {dataset_config['path']}. "
+            f"Found columns: {list(dataframe.columns)}"
+        )
+
+    dataframe = dataframe[dataframe["url"].notna()]
+    dataframe["url"] = dataframe["url"].astype(str).str.strip()
+    dataframe = dataframe[dataframe["url"] != ""]
     dataframe = dataframe.drop_duplicates(subset="url", keep="last")
     dataframe["suffix"] = dataframe["url"].apply(extract_suffix)
     dataframe = dataframe[dataframe["suffix"].notna()]

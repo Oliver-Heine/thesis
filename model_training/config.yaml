@@ -16,7 +16,7 @@ training:
   warmup_ratio: 0.1
 
 dataset:
-  path: "../combined_urls.csv"
+  path: "../top-1m.csv"
   train_split: 0.70
   val_split: 0.15
   test_split: 0.15

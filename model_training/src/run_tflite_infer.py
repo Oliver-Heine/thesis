@@ -61,6 +61,11 @@ def build_runner():
         return_tensors="np",
     )
 
+        ids = encoded["input_ids"][0].tolist()
+        tokens = tokenizer.convert_ids_to_tokens(ids)
+        for token_id, token_str in zip(ids, tokens):
+            print(f"{token_id}: {token_str}")
+
         input_details = interpreter.get_input_details()
 
         # Match dynamic input shapes.

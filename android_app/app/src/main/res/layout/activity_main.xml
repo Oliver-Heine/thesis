@@ -9,6 +9,7 @@
     tools:context=".MainActivity">
 
     <!-- App title bar -->
+
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="0dp"
@@ -26,46 +27,25 @@
 
     <!-- Camera preview placeholder (ZXing manages its own activity, this is a
          visual cue shown on the main screen between scans) -->
-    <androidx.cardview.widget.CardView
-        android:id="@+id/cardPreview"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="16dp"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="4dp"
-        app:layout_constraintTop_toBottomOf="@id/tvTitle"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/btnScan"
-        app:layout_constraintHeight_percent="0.45">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@android:color/black">
-
-            <ImageView
-                android:layout_width="80dp"
-                android:layout_height="80dp"
-                android:src="@android:drawable/ic_menu_camera"
-                android:contentDescription="Camera icon"
-                android:alpha="0.4"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Tap 'Scan QR Code' to begin"
-                android:textColor="#99FFFFFF"
-                android:textSize="14sp"
-                android:layout_marginTop="12dp"/>
-        </LinearLayout>
-    </androidx.cardview.widget.CardView>
 
     <!-- Scan button -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardPreview"
+        android:layout_width="381dp"
+        android:layout_height="210dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="12dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="4dp"
+        app:layout_constraintBottom_toTopOf="@id/btnScan"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHeight_percent="0.45"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent">
+
+    </androidx.cardview.widget.CardView>
+
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnScan"
         android:layout_width="wrap_content"
@@ -198,6 +178,31 @@
             android:textColor="@android:color/white"
             android:textStyle="bold"
             android:textSize="14sp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="413dp"
+        android:layout_height="292dp"
+        android:background="@android:color/black"
+        android:gravity="center"
+        android:orientation="vertical"
+        tools:layout_editor_absoluteX="-2dp"
+        tools:layout_editor_absoluteY="144dp">
+
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:alpha="0.4"
+            android:contentDescription="Camera icon"
+            android:src="@android:drawable/ic_menu_camera" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Tap 'Scan QR Code' to begin"
+            android:textColor="#99FFFFFF"
+            android:textSize="14sp" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
