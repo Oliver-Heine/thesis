@@ -53,16 +53,16 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.constraintlayout)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.livedata.ktx)
 
     // ZXing QR scanner (no additional Activity required)
     implementation(libs.zxing.android.embedded)
 
     // TensorFlow Lite
-//    implementation(libs.tensorflow.lite)
-//    implementation(libs.tensorflow.lite.support)
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
-    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.14.0")
+    implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.support)
+    implementation(libs.tensorflow.lite.select.tf.ops)
 
     // Networking
     implementation(libs.okhttp)

@@ -6,7 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background"
-    tools:context=".MainActivity">
+    tools:context=".ui.MainActivity">
 
     <!-- App title bar -->
 
@@ -181,13 +181,15 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/linearLayout"
         android:layout_width="413dp"
-        android:layout_height="292dp"
+        android:layout_height="29dp"
+        android:layout_marginBottom="10dp"
         android:background="@android:color/black"
         android:gravity="center"
         android:orientation="vertical"
-        tools:layout_editor_absoluteX="-2dp"
-        tools:layout_editor_absoluteY="144dp">
+        app:layout_constraintBottom_toTopOf="@+id/cardPreview"
+        tools:layout_editor_absoluteX="-2dp">
 
         <ImageView
             android:layout_width="80dp"
@@ -203,6 +205,30 @@
             android:text="Tap 'Scan QR Code' to begin"
             android:textColor="#99FFFFFF"
             android:textSize="14sp" />
+
     </LinearLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="409dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="1dp"
+        app:layout_constraintBottom_toTopOf="@+id/linearLayout"
+        tools:layout_editor_absoluteX="1dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/LocalRunText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="hint" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <Button
+        android:id="@+id/executeLocal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="14dp"
+        android:text="Test"
+        app:layout_constraintBottom_toBottomOf="parent"
+        tools:layout_editor_absoluteX="299dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
