@@ -1,0 +1,19 @@
+{
+  "citation": "",
+  "description": "",
+  "features": {
+    "url": {
+      "dtype": "large_string",
+      "_type": "Value"
+    },
+    "result": {
+      "names": [
+        "0",
+        "1"
+      ],
+      "_type": "ClassLabel"
+    }
+  },
+  "homepage": "",
+  "license": ""
+}

@@ -1,286 +1,303 @@
-"""
-evaluate.py — Model evaluation and comparison for the QR Quishing Detector.
-
-Loads saved checkpoints (or a results CSV produced by train.py) and
-computes a full set of classification metrics including baseline
-comparisons.
-
-Usage
------
-    # Compare all models using the metrics CSV written by train.py:
-    python src/evaluate.py --metrics results/metrics.csv
-
-    # Re-evaluate a single checkpoint on the test split:
-    python src/evaluate.py --checkpoint checkpoints/distilbert-base-uncased/best_model.pt \
-                            --model distilbert-base-uncased \
-                            --config config.yaml
-"""
-
-from __future__ import annotations
-
 import argparse
-import csv
-import logging
-import pathlib
-from typing import Optional
-
 import numpy as np
-import pandas as pd
 import torch
-import yaml
+
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from datasets import load_from_disk
+from utils import logging
+from tqdm import tqdm
 from sklearn.metrics import (
-    accuracy_score,
     confusion_matrix,
-    f1_score,
+    accuracy_score,
     precision_score,
     recall_score,
+    f1_score,
+    roc_curve,
+    roc_auc_score,
+    precision_recall_curve,
+    average_precision_score
 )
-from torch.utils.data import DataLoader
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from data import build_dataloaders
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import csv
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+from utils import load_config
 
+def get_device():
+    if torch.cuda.is_available():
+        print("Using GPU")
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        print("Using Apple GPU (MPS)")
+        return torch.device("mps")
+    else:
+        print("Using CPU")
+        return torch.device("cpu")
 
-# ---------------------------------------------------------------------------
-# Core metric computation
-# ---------------------------------------------------------------------------
+def load_model(model_name, device):
+    # Convert to absolute path if it's a local path
+    if os.path.exists(model_name):
+        model_path = os.path.abspath(model_name)
+    else:
+        model_path = model_name
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForSequenceClassification.from_pretrained(model_path)
 
-def compute_metrics(y_true: list[int], y_pred: list[int]) -> dict[str, float]:
-    """Compute a comprehensive set of binary classification metrics.
-
-    Parameters
-    ----------
-    y_true:
-        Ground-truth labels (0 or 1).
-    y_pred:
-        Predicted labels (0 or 1).
-
-    Returns
-    -------
-    Dictionary with keys: tp, tn, fp, fn, accuracy, precision, recall,
-    f1, specificity.
-    """
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
-
-    accuracy = accuracy_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred, zero_division=0)
-    recall = recall_score(y_true, y_pred, zero_division=0)
-    f1 = f1_score(y_true, y_pred, zero_division=0)
-    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
-
-    return {
-        "tp": int(tp),
-        "tn": int(tn),
-        "fp": int(fp),
-        "fn": int(fn),
-        "accuracy": round(float(accuracy), 6),
-        "precision": round(float(precision), 6),
-        "recall": round(float(recall), 6),
-        "f1": round(float(f1), 6),
-        "specificity": round(float(specificity), 6),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Baselines
-# ---------------------------------------------------------------------------
-
-def baseline_random(y_true: list[int], seed: int = 42) -> dict[str, float]:
-    """Random classifier baseline (50 % probability per class)."""
-    rng = np.random.default_rng(seed)
-    y_pred = rng.integers(0, 2, size=len(y_true)).tolist()
-    return compute_metrics(y_true, y_pred)
-
-
-def baseline_majority(y_true: list[int]) -> dict[str, float]:
-    """Always-predict-majority-class baseline."""
-    majority = int(np.bincount(y_true).argmax())
-    y_pred = [majority] * len(y_true)
-    return compute_metrics(y_true, y_pred)
-
-
-# ---------------------------------------------------------------------------
-# Single checkpoint evaluation
-# ---------------------------------------------------------------------------
-
-def evaluate_checkpoint(
-    checkpoint_path: pathlib.Path,
-    model_name: str,
-    test_loader: DataLoader,
-    config: dict,
-    device: Optional[torch.device] = None,
-) -> dict[str, float]:
-    """Load a checkpoint and evaluate it against the test set.
-
-    Parameters
-    ----------
-    checkpoint_path:
-        Path to a ``best_model.pt`` saved by train.py.
-    model_name:
-        HuggingFace model identifier (must match the checkpoint).
-    test_loader:
-        Test DataLoader.
-    config:
-        Parsed config.yaml dict.
-    device:
-        Torch device; auto-detected if ``None``.
-
-    Returns
-    -------
-    Metrics dictionary (same shape as ``compute_metrics``).
-    """
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    threshold = float(config["training"]["threshold"])
-
-    logger.info("Loading model '%s' from %s …", model_name, checkpoint_path)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
-    state_dict = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
 
-    all_preds: list[int] = []
-    all_labels: list[int] = []
+    return tokenizer, model
+
+
+def predict_batch(texts, tokenizer, model, device):
+
+    inputs = tokenizer(
+        texts,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=128
+    )
+
+    inputs.pop("token_type_ids", None)
+
+    # move tensors to GPU
+    inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
-        for batch in test_loader:
-            input_ids = batch["input_ids"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-            labels = batch["labels"]
+        outputs = model(**inputs)
 
-            kwargs: dict = {"input_ids": input_ids, "attention_mask": attention_mask}
-            if "token_type_ids" in batch:
-                kwargs["token_type_ids"] = batch["token_type_ids"].to(device)
+    logits = outputs.logits
+    probs = torch.softmax(logits, dim=1)
 
-            outputs = model(**kwargs)
-            probs = torch.softmax(outputs.logits, dim=-1)[:, 1].cpu().numpy()
-            preds = (probs >= threshold).astype(int)
-            all_preds.extend(preds.tolist())
-            all_labels.extend(labels.numpy().tolist())
+    preds = torch.argmax(probs, dim=1).cpu().numpy()
+    malicious_probs = probs[:, 1].cpu().numpy()
 
-    metrics = compute_metrics(all_labels, all_preds)
-    logger.info("Evaluated '%s': %s", model_name, metrics)
-    return {"model": model_name, **metrics}
+    return preds, malicious_probs
 
+def save_summary_metrics(config):
+    summary_file = f"../evaluation_results/{config['hf_train_version']}/metrics_summary.csv"
+    with open(summary_file, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([
+            "Model", "Accuracy", "Precision", "Recall", "F1", "Specificity", "AUC", "Avg_Precision", "TP", "TN", "FP",
+            "FN"
+        ])
+        for model_name in config["models"]:
+            safe_name = model_name.replace("/", "_")
+            # read each metrics file and append
+            path = f"../evaluation_results/{config['hf_train_version']}/{safe_name}_metrics.txt"
+            metrics = {}
+            with open(path, "r") as f:
+                for line in f:
+                    if ":" in line:
+                        key, val = line.strip().split(":")
+                        metrics[key.strip()] = val.strip()
+            writer.writerow([
+                safe_name,
+                metrics.get("Accuracy", ""),
+                metrics.get("Precision", ""),
+                metrics.get("Recall", ""),
+                metrics.get("F1 Score", ""),
+                metrics.get("Specificity", ""),
+                metrics.get("AUC", ""),
+                metrics.get("Avg Precision", ""),
+                metrics.get("TP", ""),
+                metrics.get("TN", ""),
+                metrics.get("FP", ""),
+                metrics.get("FN", "")
+            ])
 
-# ---------------------------------------------------------------------------
-# Table printing
-# ---------------------------------------------------------------------------
+def save_metrics(model_name, accuracy, precision, recall, f1, specificity,
+                 auc, avg_precision, tp, tn, fp, fn, hf_train_version):
 
-def print_comparison_table(rows: list[dict]) -> None:
-    """Pretty-print a comparison table to stdout."""
-    if not rows:
-        print("No results to display.")
-        return
+    safe_model_name = model_name.replace("/", "_")
 
-    cols = ["model", "accuracy", "precision", "recall", "f1", "specificity", "tp", "tn", "fp", "fn"]
-    # Only include columns that exist in the data
-    cols = [c for c in cols if c in rows[0]]
+    path = f"../evaluation_results/{hf_train_version}/{safe_model_name}_metrics.txt"
 
-    col_widths = {c: max(len(c), max(len(str(r.get(c, ""))) for r in rows)) for c in cols}
+    with open(path, "w") as f:
 
-    header = " | ".join(f"{c:<{col_widths[c]}}" for c in cols)
-    sep = "-+-".join("-" * col_widths[c] for c in cols)
+        f.write("Evaluation Results\n")
+        f.write("-------------------\n")
+        f.write(f"Accuracy:     {accuracy:.4f}\n")
+        f.write(f"Precision:    {precision:.4f}\n")
+        f.write(f"Recall:       {recall:.4f}\n")
+        f.write(f"F1 Score:     {f1:.4f}\n")
+        f.write(f"Specificity:  {specificity:.4f}\n")
+        f.write(f"AUC:          {auc:.4f}\n")
+        f.write(f"Avg Precision:{avg_precision:.4f}\n")
 
-    print("\n" + sep)
-    print(header)
-    print(sep)
-    for row in rows:
-        line = " | ".join(f"{str(row.get(c, '')):<{col_widths[c]}}" for c in cols)
-        print(line)
-    print(sep + "\n")
+        f.write("\nConfusion Matrix\n")
+        f.write(f"TP: {tp}\n")
+        f.write(f"TN: {tn}\n")
+        f.write(f"FP: {fp}\n")
+        f.write(f"FN: {fn}\n")
 
+def evaluate(model, tokenizer, dataset, device, model_name, hf_train_version):
+    texts = dataset["url"]
+    labels = np.array(dataset["result"])
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+    preds = []
+    probs = []
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate and compare URL classifier models")
-    parser.add_argument("--config", default="config.yaml")
-    parser.add_argument(
-        "--metrics",
-        default=None,
-        help="Path to metrics CSV written by train.py (skips re-evaluation)",
+    batch_size = 1024
+
+    for i in tqdm(range(0, len(texts), batch_size), desc="Evaluating"):
+        batch = texts[i:i+batch_size]
+
+        batch_preds, batch_probs = predict_batch(batch, tokenizer, model, device)
+
+        preds.extend(batch_preds)
+        probs.extend(batch_probs)
+
+    preds = np.array(preds)
+    probs = np.array(probs)
+
+    tn, fp, fn, tp = confusion_matrix(labels, preds).ravel()
+
+    accuracy = accuracy_score(labels, preds)
+    precision = precision_score(labels, preds)
+    recall = recall_score(labels, preds)
+    f1 = f1_score(labels, preds)
+    specificity = tn / (tn + fp)
+
+    auc = roc_auc_score(labels, probs)
+    avg_precision = average_precision_score(labels, probs)
+
+    save_metrics(
+        model_name,
+        accuracy,
+        precision,
+        recall,
+        f1,
+        specificity,
+        auc,
+        avg_precision,
+        tp,
+        tn,
+        fp,
+        fn,
+        hf_train_version
     )
-    parser.add_argument("--checkpoint", default=None, help="Path to a single .pt checkpoint")
-    parser.add_argument("--model", default=None, help="Model name matching --checkpoint")
-    args = parser.parse_args()
 
-    with open(args.config, "r", encoding="utf-8") as fh:
-        cfg = yaml.safe_load(fh)
+    return labels, preds, probs
 
-    results: list[dict] = []
+def plot_confusion(labels, preds, model_name, hf_train_version):
 
-    if args.metrics:
-        # ── Load pre-computed metrics from CSV ──
-        metrics_path = pathlib.Path(args.metrics)
-        if not metrics_path.exists():
-            raise FileNotFoundError(f"Metrics file not found: {metrics_path}")
-        df = pd.read_csv(metrics_path)
-        results = df.to_dict(orient="records")
-        logger.info("Loaded %d model results from %s", len(results), metrics_path)
+    cm = confusion_matrix(labels, preds)
 
-    elif args.checkpoint and args.model:
-        # ── Re-evaluate a specific checkpoint ──
-        _, _, test_loader = build_dataloaders(args.config)
-        row = evaluate_checkpoint(
-            pathlib.Path(args.checkpoint), args.model, test_loader, cfg
+    plt.figure(figsize=(6,5))
+
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        xticklabels=["Benign","Malicious"],
+        yticklabels=["Benign","Malicious"]
+    )
+
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title("Confusion Matrix")
+
+    # clean model name for filename
+    safe_model_name = model_name.replace("/", "_")
+
+    path = f"../evaluation_results/{hf_train_version}/ConfusionMatrix/{safe_model_name}_confusion_matrix.png"
+
+    plt.savefig(path, bbox_inches="tight")
+    plt.close()
+
+def plot_roc(labels, probs, model_name, hf_train_version):
+
+    fpr, tpr, _ = roc_curve(labels, probs)
+    auc = roc_auc_score(labels, probs)
+
+    plt.figure()
+
+    plt.plot(fpr, tpr, label=f"AUC = {auc:.4f}")
+    plt.plot([0,1], [0,1], linestyle="--")
+
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve")
+    plt.legend()
+
+    # clean model name for filename
+    safe_model_name = model_name.replace("/", "_")
+
+    path = f"../evaluation_results/{hf_train_version}/ROC/{safe_model_name}_roc.png"
+
+    plt.savefig(path, bbox_inches="tight")
+    plt.close()
+
+
+def plot_precision_recall(labels, probs, model_name, hf_train_version):
+
+    precision, recall, _ = precision_recall_curve(labels, probs)
+    ap = average_precision_score(labels, probs)
+
+    plt.figure()
+
+    plt.plot(recall, precision, label=f"AP = {ap:.4f}")
+
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Precision-Recall Curve")
+    plt.legend()
+
+    # clean model name for filename
+    safe_model_name = model_name.replace("/", "_")
+
+    path = f"../evaluation_results/{hf_train_version}/Precision-recall/{safe_model_name}_Precision-Recall.png"
+
+    plt.savefig(path, bbox_inches="tight")
+    plt.close()
+
+def main(config_path):
+    config = load_config(config_path)
+    hf_train_version = config["hf_train_version"]
+
+    os.makedirs(f"../evaluation_results/{hf_train_version}/ConfusionMatrix", exist_ok=True)
+    os.makedirs(f"../evaluation_results/{hf_train_version}/ROC", exist_ok=True)
+    os.makedirs(f"../evaluation_results/{hf_train_version}/Precision-recall", exist_ok=True)
+
+    dataset = load_from_disk("data/splits")
+
+    test_dataset = dataset["test"]
+
+    device = get_device()
+
+    for model_name in config["models"]:
+
+        hf_model = (
+            config["hf_username"]
+            + model_name
+            + hf_train_version
         )
-        results.append(row)
 
-    else:
-        # ── Re-evaluate all checkpoints found in checkpoint_dir ──
-        ckpt_base = pathlib.Path(cfg["output"]["checkpoint_dir"])
-        _, _, test_loader = build_dataloaders(args.config)
-        for model_name in cfg["models"]:
-            ckpt = ckpt_base / model_name.replace("/", "_") / "best_model.pt"
-            if ckpt.exists():
-                row = evaluate_checkpoint(ckpt, model_name, test_loader, cfg)
-                results.append(row)
-            else:
-                logger.warning("Checkpoint not found, skipping: %s", ckpt)
+        logging.info("\n================================")
+        logging.info(f"Evaluating: {hf_model}")
 
-    if not results:
-        logger.error("No results to report.")
-        return
+        tokenizer, model = load_model(hf_model, device)
 
-    # ── Add baselines using a dummy label list if available ──
-    # Baselines only make sense when we have ground-truth from evaluation
-    if "tp" in results[0]:
-        # Reconstruct approximate y_true from confusion matrix counts
-        first = results[0]
-        n_total = first["tp"] + first["tn"] + first["fp"] + first["fn"]
-        n_pos = first["tp"] + first["fn"]
-        y_approx = [1] * n_pos + [0] * (n_total - n_pos)
+        labels, preds, probs = evaluate(model, tokenizer, test_dataset, device, model_name, hf_train_version)
 
-        rnd_metrics = baseline_random(y_approx)
-        maj_metrics = baseline_majority(y_approx)
-        results.append({"model": "BASELINE: random", **rnd_metrics})
-        results.append({"model": "BASELINE: majority", **maj_metrics})
+        plot_confusion(labels, preds, model_name, hf_train_version)
+        plot_roc(labels, probs, model_name, hf_train_version)
+        plot_precision_recall(labels, probs, model_name, hf_train_version)
 
-    print_comparison_table(results)
-
-    # ── Save enriched CSV ──
-    out_path = pathlib.Path(cfg["output"]["metrics_csv"])
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    if results:
-        fieldnames = list(results[0].keys())
-        with open(out_path, "w", newline="", encoding="utf-8") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(results)
-        logger.info("Results saved → %s", out_path)
+    save_summary_metrics(config)
 
 
 if __name__ == "__main__":
-    main()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="../config.yaml")
+
+    args = parser.parse_args()
+
+    main(args.config)

@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""
+Convert a Hugging Face DistilBERT text classification model to ONNX
+Supports dynamic batch size and sequence length for mobile/Android use
+"""
+
+import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import onnx
+import onnxruntime as ort
+import argparse
+
+def main(model_name: str, output_path: str):
+    # -------------------------
+    # 1. Load tokenizer & model
+    # -------------------------
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    model.eval()  # important for export!
+
+    print(f"Loaded model: {model_name}")
+
+    # -------------------------
+    # 2. Prepare dummy input
+    # -------------------------
+    dummy_text = "https://example.com"
+    inputs = tokenizer(dummy_text, return_tensors="pt")
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
+
+    # -------------------------
+    # 3. Export to ONNX
+    # -------------------------
+    torch.onnx.export(
+        model,
+        (input_ids, attention_mask),
+        output_path,
+        export_params=True,
+        opset_version=17,
+        do_constant_folding=True,
+        input_names=["input_ids", "attention_mask"],
+        output_names=["logits"],
+        dynamic_axes={
+            "input_ids": {0: "batch_size", 1: "seq_len"},
+            "attention_mask": {0: "batch_size", 1: "seq_len"},
+            "logits": {0: "batch_size"}
+        },
+    )
+    print(f"ONNX model exported to {output_path}")
+
+    # -------------------------
+    # 4. Validate ONNX model
+    # -------------------------
+    onnx_model = onnx.load(output_path)
+    onnx.checker.check_model(onnx_model)
+    print("ONNX model is valid!")
+
+    # -------------------------
+    # 5. Test ONNX inference
+    # -------------------------
+    ort_session = ort.InferenceSession(output_path)
+    outputs = ort_session.run(
+        None,
+        {
+            "input_ids": input_ids.numpy(),
+            "attention_mask": attention_mask.numpy()
+        }
+    )
+    print("ONNX model inference output (logits):")
+    print(outputs[0])
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Convert Hugging Face DistilBERT to ONNX")
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="OliverHeine/distilbert-base-uncased_train_v2",
+        help="Hugging Face model name"
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        default="distilbert.onnx",
+        help="Output ONNX file path"
+    )
+    args = parser.parse_args()
+
+    main(args.model_name, args.output_path)

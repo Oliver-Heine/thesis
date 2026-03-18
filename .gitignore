@@ -9,6 +9,19 @@ __MACOSX/
 .Spotlight-V100
 .Trashes
 
+model_training/src/data/splits/train/*
+model_training/src/data/splits/validation/*
+model_training/src/data/splits/test/*
+model_training/src/saved_model/*
+modelTransferVenv/*
+modelTransferVenv_py313_backup/*
+modelTransferVenv_tf214/*
+android_app/app/src/main/assets/*
+model_training/*.csv
+*.arrow
+
+
+
 # ──────────────────────────────
 # Python
 # ──────────────────────────────

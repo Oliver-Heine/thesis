@@ -29,9 +29,16 @@ import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.nio.FloatBuffer
+import java.net.URI
 import java.util.concurrent.TimeUnit
+import kotlin.math.PI
 import kotlin.math.exp
+
+private const val MALICIOUS = "MALICIOUS"
+
+private const val BENIGN = "BENIGN"
+
+private const val UNCERTAIN = "UNCERTAIN"
 
 /**
  * Main activity: scans a QR code, runs TFLite inference, and warns the user
@@ -43,23 +50,22 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "QRQuishing"
         private const val CONFIDENCE_THRESHOLD = 0.80f
         private const val MAX_URL_LENGTH = 2048
-        private const val BACKEND_URL = "http://10.0.2.2:8080/validate"  // localhost for emulator
+        private const val BACKEND_URL = "http://10.0.2.2:8080/validate"
+        private const val MODEL_SEQUENCE_LENGTH = 128
     }
 
-    // ── TFLite ──────────────────────────────────────────────────────────────
     private lateinit var tflite: Interpreter
     private lateinit var vocab: Map<String, Int>
+    private lateinit var idToToken: Map<Int, String>
+    private var tokenizer: WordPieceTokenizer? = null
 
-    // ── HTTP client ─────────────────────────────────────────────────────────
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    // ── Coroutine scope tied to activity lifecycle ───────────────────────────
     private val activityScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // ── Views ────────────────────────────────────────────────────────────────
     private lateinit var tvUrl: TextView
     private lateinit var tvVerdict: TextView
     private lateinit var progressConfidence: ProgressBar
@@ -67,15 +73,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cardResult: CardView
     private lateinit var bannerWarning: View
 
-    // ── Camera permission launcher ───────────────────────────────────────────
     private val requestCameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) startScan() else showPermissionDeniedDialog()
         }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Lifecycle
-    // ────────────────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,19 +105,31 @@ class MainActivity : AppCompatActivity() {
         httpClient.dispatcher.executorService.shutdown()
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // Model & vocab loading
-    // ────────────────────────────────────────────────────────────────────────
-
     private fun loadModel() {
         try {
-            val modelBuffer = FileUtil.loadMappedFile(this, "model.tflite")
+            val modelBuffer = FileUtil.loadMappedFile(this, "distilbert_model.tflite")
             val options = Interpreter.Options().apply { numThreads = 2 }
             tflite = Interpreter(modelBuffer, options)
-            Log.i(TAG, "TFLite model loaded")
+
+            // Resize inputs to match the 128 sequence length used in runLocalInference
+            val inputShape = intArrayOf(1, MODEL_SEQUENCE_LENGTH)
+            for (i in 0 until tflite.inputTensorCount) {
+                tflite.resizeInput(i, inputShape)
+            }
+            tflite.allocateTensors()
+
+            Log.i(TAG, "TFLite model loaded and resized to $MODEL_SEQUENCE_LENGTH")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load TFLite model", e)
-            showErrorDialog("Model load failed", "Could not load the on-device model: ${e.message}")
+        }
+
+        for (i in 0 until tflite.inputTensorCount) {
+            val t = tflite.getInputTensor(i)
+            Log.i(TAG, "Input[$i] name=${t.name()} shape=${t.shape().contentToString()} dtype=${t.dataType()}")
+        }
+        for (i in 0 until tflite.outputTensorCount) {
+            val t = tflite.getOutputTensor(i)
+            Log.i(TAG, "Output[$i] name=${t.name()} shape=${t.shape().contentToString()} dtype=${t.dataType()}")
         }
     }
 
@@ -124,36 +137,37 @@ class MainActivity : AppCompatActivity() {
         try {
             val mutableVocab = mutableMapOf<String, Int>()
             assets.open("vocab.txt").use { stream ->
-                BufferedReader(InputStreamReader(stream)).forEachIndexed { idx, line ->
-                    mutableVocab[line.trim()] = idx
-                }
+                BufferedReader(InputStreamReader(stream))
+                    .lineSequence()
+                    .forEachIndexed { idx, line ->
+                        val token = line.trim()
+                        if (token.isNotEmpty()) {
+                            mutableVocab[token] = idx
+                        }
+                    }
             }
+
+            val required = listOf("[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "<", ">")
+            val missing = required.filter { !mutableVocab.containsKey(it) }
+            if (missing.isNotEmpty()) {
+                throw IllegalStateException("vocab.txt is missing required tokens: $missing")
+            }
+
             vocab = mutableVocab
+            idToToken = mutableVocab.entries.associate { it.value to it.key }
+            tokenizer = WordPieceTokenizer(vocab)
+
             Log.i(TAG, "Vocab loaded: ${vocab.size} tokens")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load vocab", e)
         }
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // Camera permission & scanning
-    // ────────────────────────────────────────────────────────────────────────
-
     private fun checkCameraAndScan() {
-        when {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-                    PackageManager.PERMISSION_GRANTED -> startScan()
-            shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) -> {
-                AlertDialog.Builder(this)
-                    .setTitle("Camera Required")
-                    .setMessage("The camera is needed to scan QR codes.")
-                    .setPositiveButton("Grant") { _, _ ->
-                        requestCameraPermission.launch(Manifest.permission.CAMERA)
-                    }
-                    .setNegativeButton("Cancel", null)
-                    .show()
-            }
-            else -> requestCameraPermission.launch(Manifest.permission.CAMERA)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            startScan()
+        } else {
+            requestCameraPermission.launch(Manifest.permission.CAMERA)
         }
     }
 
@@ -161,40 +175,22 @@ class MainActivity : AppCompatActivity() {
         val integrator = IntentIntegrator(this)
         integrator.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
         integrator.setPrompt("Scan a QR code")
-        integrator.setCameraId(0)
-        integrator.setBeepEnabled(false)
-        integrator.setBarcodeImageEnabled(false)
         integrator.initiateScan()
     }
 
-    @Deprecated("Deprecated — required by ZXing IntentIntegrator")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         val result: IntentResult? = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
-        if (result != null) {
-            val rawUrl = result.contents
-            if (rawUrl.isNullOrBlank()) {
-                showInfoDialog("No QR Code Found", "No QR code was detected. Please try again.")
-            } else {
-                handleScannedUrl(rawUrl)
-            }
+        if (result != null && !result.contents.isNullOrBlank()) {
+            handleScannedUrl(result.contents)
         } else {
             @Suppress("DEPRECATION")
             super.onActivityResult(requestCode, resultCode, data)
         }
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // Inference pipeline
-    // ────────────────────────────────────────────────────────────────────────
-
     private fun handleScannedUrl(rawUrl: String) {
-        val url = rawUrl.trim().lowercase()
-
-        // Basic sanity check before running inference
-        if (url.length > MAX_URL_LENGTH) {
-            showWarningDialog(rawUrl, "UNCERTAIN", 0f, "URL exceeds maximum length.")
-            return
-        }
+        val url = rawUrl.trim()
+        if (url.isEmpty()) return
 
         activityScope.launch {
             val (verdict, confidence) = withContext(Dispatchers.Default) {
@@ -203,71 +199,142 @@ class MainActivity : AppCompatActivity() {
 
             updateResultCard(url, verdict, confidence)
 
-            when {
-                verdict == "MALICIOUS" -> showWarningDialog(url, verdict, confidence, null)
-                verdict == "UNCERTAIN" -> {
-                    // Escalate to backend for uncertain cases
-                    val backendResult = withContext(Dispatchers.IO) {
-                        queryBackend(url)
-                    }
-                    if (backendResult != null) {
-                        val backendVerdict = backendResult.optString("verdict", "uncertain").uppercase()
-                        val backendConf = backendResult.optDouble("confidence", 0.0).toFloat()
-                        updateResultCard(url, backendVerdict, backendConf)
-                        if (backendVerdict == "MALICIOUS" || backendVerdict == "UNCERTAIN") {
-                            showWarningDialog(url, backendVerdict, backendConf, null)
-                        }
-                    } else {
-                        // Backend unreachable — surface the uncertainty
-                        showWarningDialog(url, verdict, confidence, "Backend check failed; treat with caution.")
-                    }
-                }
-                // BENIGN with high confidence — no warning needed
+            if (verdict == "MALICIOUS" || verdict == UNCERTAIN) {
+                showWarningDialog(url, verdict, confidence, null)
             }
         }
     }
 
-    /** Tokenize the URL and run TFLite classification. */
-    private fun runLocalInference(url: String): Pair<String, Float> {
-        if (!::tflite.isInitialized || !::vocab.isInitialized) {
-            Log.w(TAG, "Model or vocab not ready")
-            return Pair("UNCERTAIN", 0f)
+    /**
+     * Normalizes URL to match the requested structure:
+     * "< tag > value < tag > value ..."
+     */
+    private fun normalizeUrl(url: String): String {
+        var cleanUrl = url.lowercase().trim()
+        cleanUrl = cleanUrl.replace(Regex("^https?://"), "")
+        cleanUrl = cleanUrl.replace(Regex("^www\\."), "")
+
+        return try {
+            val uri = URI("http://$cleanUrl")
+            val host = uri.host ?: ""
+            val hostParts = host.split(".").filter { it.isNotEmpty() }
+
+            val subdomainParts = if (hostParts.size > 2) hostParts.dropLast(2) else emptyList()
+            val domainPart = if (hostParts.size >= 2) hostParts[hostParts.size - 2]
+            else hostParts.getOrNull(0) ?: ""
+            val suffixParts = if (hostParts.size >= 2) listOf(hostParts.last()) else emptyList()
+
+            val tokens = mutableListOf<String>()
+
+            if (subdomainParts.isNotEmpty()) {
+                tokens.add("<")
+                tokens.add("subdomain")
+                tokens.add(">")
+                tokens.addAll(subdomainParts)
+            }
+
+            if (domainPart.isNotEmpty()) {
+                tokens.add("<")
+                tokens.add("domain")
+                tokens.add(">")
+                tokens.add(domainPart)
+            }
+
+            if (suffixParts.isNotEmpty()) {
+                tokens.add("<")
+                tokens.add("suffix")
+                tokens.add(">")
+                tokens.addAll(suffixParts)
+            }
+
+            uri.path?.takeIf { it != "/" }?.let { path ->
+                val pathTokens = path.split(Regex("[/\\-_.?=&]")).filter { it.isNotEmpty() }
+                if (pathTokens.isNotEmpty()) {
+                    tokens.add("<")
+                    tokens.add("path")
+                    tokens.add(">")
+                    tokens.addAll(pathTokens)
+                }
+            }
+
+            uri.query?.takeIf { it.isNotBlank() }?.let { query ->
+                val queryTokens = query.split(Regex("[=&]")).filter { it.isNotEmpty() }
+                if (queryTokens.isNotEmpty()) {
+                    tokens.add("<")
+                    tokens.add("query")
+                    tokens.add(">")
+                    tokens.addAll(queryTokens)
+                }
+            }
+
+            tokens.joinToString(" ")
+        } catch (e: Exception) {
+            cleanUrl
+        }
+    }
+
+    private fun runLocalInference(rawUrl: String): Pair<String, Float> {
+        val localTokenizer = tokenizer
+        if (!::tflite.isInitialized || localTokenizer == null) {
+            return Pair(UNCERTAIN, 0f)
         }
 
         return try {
-            val maxLen = 128
-            val unknownId = vocab["[UNK]"] ?: 0
-            val padId = vocab["[PAD]"] ?: 0
-            val clsId = vocab["[CLS]"] ?: 101
-            val sepId = vocab["[SEP]"] ?: 102
+            val normalized = normalizeUrl(rawUrl)
 
-            // Character-level tokenization: the TFLite model exported from
-            // train.py embeds a character vocabulary so that the full
-            // WordPiece tokenizer is not needed on-device. Each character
-            // maps to its vocab ID; unknown characters map to [UNK].
-            val tokens = url.split("").filter { it.isNotEmpty() }.map { vocab[it] ?: unknownId }
-            val ids = IntArray(maxLen) { padId }
-            val mask = IntArray(maxLen) { 0 }
+            val maxLen = MODEL_SEQUENCE_LENGTH
+            val clsId = vocab["[CLS]"]?.toLong() ?: 101L
+            val sepId = vocab["[SEP]"]?.toLong() ?: 102L
+            val padId = vocab["[PAD]"]?.toLong() ?: 0L
+
+            val wordPieceTokens = localTokenizer.tokenize(normalized)
+            
+            // Print tokens to terminal as requested
+            Log.d(TAG, "${clsId}: [CLS]")
+            wordPieceTokens.forEach { id ->
+                Log.d(TAG, "${id}: ${idToToken[id]}")
+            }
+            Log.d(TAG, "${sepId}: [SEP]")
+
+            val ids = LongArray(maxLen) { padId }
+            val mask = LongArray(maxLen) { 0L }
 
             ids[0] = clsId
-            mask[0] = 1
-            val contentLen = minOf(tokens.size, maxLen - 2)
+            mask[0] = 1L
+
+            val contentLen = minOf(wordPieceTokens.size, maxLen - 2)
             for (i in 0 until contentLen) {
-                ids[i + 1] = tokens[i]
-                mask[i + 1] = 1
+                ids[i + 1] = wordPieceTokens[i].toLong()
+                mask[i + 1] = 1L
             }
+
             val endIdx = contentLen + 1
             if (endIdx < maxLen) {
                 ids[endIdx] = sepId
-                mask[endIdx] = 1
+                mask[endIdx] = 1L
             }
 
             val inputIds = Array(1) { ids }
             val attentionMask = Array(1) { mask }
             val outputBuffer = Array(1) { FloatArray(2) }
 
+            val inputs = arrayOfNulls<Any>(tflite.inputTensorCount)
+
+            for (i in 0 until tflite.inputTensorCount) {
+                val tensor = tflite.getInputTensor(i)
+                val name = tensor.name().lowercase()
+
+                when {
+                    "input_ids" in name -> inputs[i] = inputIds
+                    "attention_mask" in name -> inputs[i] = attentionMask
+                    else -> throw IllegalStateException(
+                        "Unexpected input tensor[$i]: ${tensor.name()}"
+                    )
+                }
+            }
+
             tflite.runForMultipleInputsOutputs(
-                arrayOf(inputIds, attentionMask),
+                inputs.requireNoNulls(),
                 mapOf(0 to outputBuffer)
             )
 
@@ -277,113 +344,97 @@ class MainActivity : AppCompatActivity() {
             val expMalicious = exp((logits[1] - maxLogit).toDouble()).toFloat()
             val sum = expBenign + expMalicious
             val pMalicious = expMalicious / sum
+            val pBenign = expBenign / sum
 
-            val verdict = when {
-                pMalicious >= CONFIDENCE_THRESHOLD -> "MALICIOUS"
-                (1f - pMalicious) >= CONFIDENCE_THRESHOLD -> "BENIGN"
-                else -> "UNCERTAIN"
+            
+            if (pMalicious >= CONFIDENCE_THRESHOLD) {
+                Pair(MALICIOUS, pMalicious)
+            } else if ((1f - pMalicious) >= CONFIDENCE_THRESHOLD) {
+                Pair(BENIGN, pBenign)
+            } else {
+                Pair(UNCERTAIN, pMalicious)
             }
-            Pair(verdict, pMalicious)
+
         } catch (e: Exception) {
             Log.e(TAG, "Inference error", e)
-            Pair("UNCERTAIN", 0f)
+            Pair(UNCERTAIN, 0f)
         }
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // Backend call (for uncertain cases)
-    // ────────────────────────────────────────────────────────────────────────
-
     private fun queryBackend(url: String): JSONObject? {
         return try {
-            val body = JSONObject().put("url", url).toString()
-                .toRequestBody("application/json".toMediaType())
-            val request = Request.Builder()
-                .url(BACKEND_URL)
-                .post(body)
-                .build()
+            val body = JSONObject().put("url", url).toString().toRequestBody("application/json".toMediaType())
+            val request = Request.Builder().url(BACKEND_URL).post(body).build()
             httpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    response.body?.string()?.let { JSONObject(it) }
-                } else {
-                    Log.w(TAG, "Backend returned HTTP ${response.code}")
-                    null
-                }
+                if (response.isSuccessful) response.body?.string()?.let { JSONObject(it) } else null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Backend request failed", e)
             null
         }
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // UI helpers
-    // ────────────────────────────────────────────────────────────────────────
-
     private fun updateResultCard(url: String, verdict: String, confidence: Float) {
         cardResult.visibility = View.VISIBLE
         tvUrl.text = url
-
         tvVerdict.text = verdict
-        tvVerdict.setTextColor(
-            ContextCompat.getColor(
-                this,
-                when (verdict) {
-                    "MALICIOUS" -> android.R.color.holo_red_dark
-                    "BENIGN" -> android.R.color.holo_green_dark
-                    else -> android.R.color.holo_orange_dark
-                }
-            )
-        )
-
+        tvVerdict.setTextColor(ContextCompat.getColor(this, when (verdict) {
+            "MALICIOUS" -> android.R.color.holo_red_dark
+            BENIGN -> android.R.color.holo_green_dark
+            else -> android.R.color.holo_orange_dark
+        }))
         val pct = (confidence * 100).toInt()
         progressConfidence.progress = pct
         tvConfidence.text = "Confidence: $pct %"
-
-        bannerWarning.visibility = if (verdict == "MALICIOUS" || verdict == "UNCERTAIN") {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
+        bannerWarning.visibility = if (verdict == "MALICIOUS" || verdict == UNCERTAIN) View.VISIBLE else View.GONE
     }
 
     private fun showWarningDialog(url: String, verdict: String, confidence: Float, extra: String?) {
-        val message = buildString {
-            append("URL: $url\n\n")
-            append("Verdict: $verdict\n")
-            append("Confidence: ${(confidence * 100).toInt()}%\n")
-            if (!extra.isNullOrBlank()) append("\n$extra")
-            append("\n\nDo NOT open this URL.")
-        }
-        AlertDialog.Builder(this)
-            .setTitle("⚠ Warning")
-            .setMessage(message)
-            .setPositiveButton("Understood", null)
-            .setCancelable(false)
-            .show()
+        val message = "URL: $url\n\nVerdict: $verdict\nConfidence: ${(confidence * 100).toInt()}%\n\nDo NOT open this URL."
+        AlertDialog.Builder(this).setTitle("⚠ Warning").setMessage(message).setPositiveButton("OK", null).show()
     }
 
     private fun showPermissionDeniedDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Permission Denied")
-            .setMessage("Camera access is required to scan QR codes. Please grant the permission in Settings.")
-            .setPositiveButton("OK", null)
-            .show()
+        AlertDialog.Builder(this).setTitle("Permission Denied").setMessage("Camera access is required.").setPositiveButton("OK", null).show()
     }
 
-    private fun showErrorDialog(title: String, message: String) {
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setPositiveButton("OK", null)
-            .show()
-    }
-
-    private fun showInfoDialog(title: String, message: String) {
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setPositiveButton("OK", null)
-            .show()
+    /**
+     * Standard WordPiece tokenizer. 
+     */
+    class WordPieceTokenizer(private val vocab: Map<String, Int>) {
+        private val unknownId = vocab["[UNK]"] ?: 100
+        
+        fun tokenize(text: String): List<Int> {
+            val result = mutableListOf<Int>()
+            // Split by space first
+            for (word in text.split(Regex("\\s+"))) {
+                if (word.isEmpty()) continue
+                
+                var start = 0
+                while (start < word.length) {
+                    var end = word.length
+                    var curToken = -1
+                    
+                    while (start < end) {
+                        val subword = if (start == 0) word.substring(start, end) 
+                                     else "##" + word.substring(start, end)
+                        
+                        if (vocab.containsKey(subword)) {
+                            curToken = vocab[subword]!!
+                            break
+                        }
+                        end--
+                    }
+                    
+                    if (curToken == -1) {
+                        result.add(unknownId)
+                        break
+                    } else {
+                        result.add(curToken)
+                        start = end
+                    }
+                }
+            }
+            return result
+        }
     }
 }
