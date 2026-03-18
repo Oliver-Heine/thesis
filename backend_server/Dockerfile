@@ -8,15 +8,15 @@ WORKDIR /build
 # Copy dependency descriptor first for layer caching
 COPY pom.xml .
 COPY .mvn/ .mvn/
-COPY mvnw .
+COPY mvn .
 
 # Pre-fetch dependencies (fails gracefully if mvnw is absent — also supports
 # plain `mvn` invocation in CI)
-RUN chmod +x mvnw && ./mvnw dependency:go-offline -q 2>/dev/null || true
+RUN chmod +x mvn && ./mvn dependency:go-offline -q 2>/dev/null || true
 
 # Copy source and build the fat JAR
 COPY src/ src/
-RUN ./mvnw package -DskipTests -q
+RUN ./mvn package -DskipTests -q
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Minimal runtime image

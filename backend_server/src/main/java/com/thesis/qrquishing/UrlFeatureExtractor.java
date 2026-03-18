@@ -4,6 +4,7 @@ import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.LoadState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.net.InetAddress;
@@ -27,8 +28,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       network connection is made.</li>
  *   <li>JavaScript is disabled in the browser to prevent drive-by execution.</li>
  *   <li>Navigation timeout capped at 10 seconds.</li>
- *   <li>VirusTotal API key is read from the {@code VT_API_KEY} environment
- *       variable only — never hardcoded.</li>
+ *   <li>VirusTotal API key is read from {@code VT_API_KEY} (env or .env)
+ *       — never hardcoded.</li>
  * </ul>
  */
 @Component
@@ -38,7 +39,6 @@ public class UrlFeatureExtractor {
 
     private static final int NAV_TIMEOUT_MS = 10_000;
     private static final int MAX_REDIRECTS = 20;
-    private static final String VT_API_KEY_ENV = "VT_API_KEY";
 
     /** Private/loopback CIDR prefixes that must be blocked (SSRF). */
     private static final List<String> BLOCKED_PREFIXES = List.of(
@@ -59,7 +59,7 @@ public class UrlFeatureExtractor {
      * @throws SsrfBlockedException if the URL resolves to a private/loopback address
      * @throws ExtractionException  on any other extraction failure
      */
-    public UrlFeatures extract(String url) {
+    public UrlFeatures  extract(String url) {
         validateNoSsrf(url);
 
         try (Playwright playwright = Playwright.create()) {
@@ -101,18 +101,14 @@ public class UrlFeatureExtractor {
 
                     String pageTitle = page.title();
 
-                    // Optional VirusTotal lookup
-                    boolean vtFlag = checkVirusTotal(url);
-
-                    return new UrlFeatures(
-                            redirectCount,
-                            finalUrl,
-                            hasLoginForm,
-                            usesEval,
-                            finalUrlHttps,
-                            vtFlag,
-                            pageTitle
-                    );
+                    return new UrlFeatures(java.util.Map.of(
+                            "redirect_count", redirectCount,
+                            "final_url", finalUrl,
+                            "has_login_form", hasLoginForm,
+                            "uses_eval", usesEval,
+                            "final_url_https", finalUrlHttps,
+                            "page_title", pageTitle
+                    ));
                 }
             }
         } catch (SsrfBlockedException e) {
@@ -134,10 +130,6 @@ public class UrlFeatureExtractor {
     void validateNoSsrf(String url) {
         try {
             URI uri = URI.create(url);
-            String scheme = uri.getScheme();
-            if (scheme == null || (!scheme.equals("http") && !scheme.equals("https"))) {
-                throw new SsrfBlockedException("Only http/https URLs are permitted.");
-            }
 
             String host = uri.getHost();
             if (host == null || host.isBlank()) {
@@ -185,48 +177,6 @@ public class UrlFeatureExtractor {
             }
         }
         return count;
-    }
-
-    /**
-     * Query the VirusTotal URL report API.
-     *
-     * @return {@code true} if any engine flags the URL as malicious
-     */
-    private boolean checkVirusTotal(String url) {
-        String apiKey = System.getenv(VT_API_KEY_ENV);
-        if (apiKey == null || apiKey.isBlank()) {
-            log.debug("VT_API_KEY not set — skipping VirusTotal check");
-            return false;
-        }
-
-        try {
-            // VT v3: encode URL as base64url (no padding) for the endpoint
-            String encoded = java.util.Base64.getUrlEncoder()
-                    .withoutPadding()
-                    .encodeToString(url.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(5))
-                    .build();
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://www.virustotal.com/api/v3/urls/" + encoded))
-                    .header("x-apikey", apiKey)
-                    .timeout(Duration.ofSeconds(10))
-                    .GET()
-                    .build();
-
-            HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (resp.statusCode() == 200) {
-                String body = resp.body();
-                // Quick heuristic: "malicious" count > 0 in stats
-                return body.contains("\"malicious\":") && !body.contains("\"malicious\":0");
-            }
-        } catch (Exception e) {
-            log.warn("VirusTotal check failed: {}", e.getMessage());
-        }
-        return false;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

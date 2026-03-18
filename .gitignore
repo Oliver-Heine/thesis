@@ -16,7 +16,9 @@ model_training/src/saved_model/*
 modelTransferVenv/*
 modelTransferVenv_py313_backup/*
 modelTransferVenv_tf214/*
-
+android_app/app/src/main/assets/*
+model_training/*.csv
+*.arrow
 
 
 

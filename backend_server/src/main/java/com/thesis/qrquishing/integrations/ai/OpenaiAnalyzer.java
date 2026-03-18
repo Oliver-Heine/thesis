@@ -1,7 +1,9 @@
-package com.thesis.qrquishing;
+package com.thesis.qrquishing.integrations.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.thesis.qrquishing.UrlFeatures;
+import com.thesis.qrquishing.ValidationResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -28,9 +30,9 @@ import java.time.Duration;
  * </ul>
  */
 @Component
-public class LlmAnalyzer {
+public class OpenaiAnalyzer implements AIAnalyzer{
 
-    private static final Logger log = LoggerFactory.getLogger(LlmAnalyzer.class);
+    private static final Logger log = LoggerFactory.getLogger(OpenaiAnalyzer.class);
 
     private static final String OPENAI_API_KEY_ENV = "OPENAI_API_KEY";
     private static final String OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
@@ -66,7 +68,7 @@ public class LlmAnalyzer {
         String apiKey = System.getenv(OPENAI_API_KEY_ENV);
         if (apiKey == null || apiKey.isBlank()) {
             log.warn("OPENAI_API_KEY not set — returning uncertain verdict");
-            return new ValidationResponse("uncertain", 0.0, buildFeatureMap(features));
+            return new ValidationResponse("uncertain", 0.0, features.features());
         }
 
         String userContent = buildUserMessage(features);
@@ -110,22 +112,10 @@ public class LlmAnalyzer {
     private String buildUserMessage(UrlFeatures features) {
         try {
             return "Analyse the following URL features and classify the URL:\n"
-                    + objectMapper.writeValueAsString(buildFeatureMap(features));
+                    + objectMapper.writeValueAsString(features.features());
         } catch (Exception e) {
             throw new LlmException("Failed to serialise features", e);
         }
-    }
-
-    private java.util.Map<String, Object> buildFeatureMap(UrlFeatures features) {
-        return java.util.Map.of(
-                "redirect_count", features.redirectCount(),
-                "final_url", features.finalUrl(),
-                "has_login_form", features.hasLoginForm(),
-                "uses_eval", features.usesEval(),
-                "final_url_https", features.finalUrlHttps(),
-                "vt_flag", features.vtFlag(),
-                "page_title", features.pageTitle()
-        );
     }
 
     /** Build the full OpenAI Chat Completions request body. */
@@ -176,7 +166,7 @@ public class LlmAnalyzer {
                 verdict = "uncertain";
             }
 
-            return new ValidationResponse(verdict, confidence, buildFeatureMap(features));
+            return new ValidationResponse(verdict, confidence, features.features());
 
         } catch (Exception e) {
             throw new LlmException("Failed to parse LLM response: " + e.getMessage(), e);

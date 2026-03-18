@@ -22,6 +22,12 @@ export OPENAI_API_KEY="sk-..."
 export VT_API_KEY="<your-virustotal-key>"
 ```
 
+Or create a local `.env` file (loaded automatically at startup):
+
+```bash
+cp .env.example .env
+```
+
 Neither key is required for the server to start; missing keys cause the
 corresponding check to be skipped (verdict defaults to `"uncertain"`).
 
