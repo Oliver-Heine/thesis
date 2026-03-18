@@ -14,6 +14,8 @@ from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 import os
 import logging
+import zipfile
+import io
 
 # =========================
 # CONFIG (use env vars for Docker)
@@ -24,9 +26,12 @@ REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", 15000))
 BROWSER_RESTART_INTERVAL = int(os.getenv("BROWSER_RESTART_INTERVAL", 100))
 BENIGN_OUTPUT = os.getenv("BENIGN_OUTPUT", "benign_domains.csv")
 MALICIOUS_OUTPUT = os.getenv("MALICIOUS_OUTPUT", "dataset_malicious.csv")
-SEEN_DOMAINS_FILE = os.getenv("SEEN_DOMAINS_FILE", "seen_domains.pkl")
-OPENPHISH_FEED = os.getenv("OPENPHISH_FEED", "https://openphish.com/feed.txt")
-PHISHTANK_FEED = os.getenv("PHISHTANK_FEED", "https://data.phishtank.com/data/online-valid.csv")
+FAILED_OUTPUT = os.getenv("FAILED_OUTPUT", "failed_domains.csv")
+SEEN_URLS_FILE = os.getenv("SEEN_URLS_FILE", "seen_urls.pkl")
+OPENPHISH_FEED = os.getenv("OPENPHISH_FEED")
+PHISHTANK_FEED = os.getenv("PHISHTANK_FEED")
+PHISHTANK_USERNAME = os.getenv("PHISHTANK_USERNAME")
+URLHAUS_FEED = os.getenv("URLHAUS_FEED")
 SAVE_INTERVAL = int(os.getenv("SAVE_INTERVAL", 300))  # seconds
 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
@@ -39,14 +44,19 @@ stats = {
     "benign":0,
     "malicious":0,
     "errors":0,
-    "browser_fail":0,
+    "dns_fail": 0,
+    "timeout": 0,
+    "http_error": 0,
+    "connection_fail": 0,
+    "other_error": 0,
     "start_time":time.time()
 }
-seen_domains = set()
+seen_urls = set()
 pending_domains = set()
 write_queue = asyncio.Queue()
 malicious_queue = asyncio.Queue()
 benign_queue = asyncio.Queue()
+failed_queue = asyncio.Queue()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,30 +67,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # =========================
-# Persist seen_domains
+# Persist seen_urls
 # =========================
-def save_seen_domains():
-    with open(SEEN_DOMAINS_FILE, "wb") as f:
-        pickle.dump(seen_domains, f)
+def save_seen_urls():
+    with open(SEEN_URLS_FILE, "wb") as f:
+        pickle.dump(seen_urls, f)
 
 
-def load_seen_domains():
-    global seen_domains
-    if os.path.exists(SEEN_DOMAINS_FILE):
-        with open(SEEN_DOMAINS_FILE, "rb") as f:
-            seen_domains = pickle.load(f)
+def load_seen_urls():
+    global seen_urls
+    if os.path.exists(SEEN_URLS_FILE):
+        with open(SEEN_URLS_FILE, "rb") as f:
+            seen_urls = pickle.load(f)
     else:
-        seen_domains = set()
+        seen_urls = set()
 
 # =========================
 # Periodic autosave task
 # =========================
-async def autosave_seen_domains():
+async def autosave_seen_urls():
     while True:
         await asyncio.sleep(SAVE_INTERVAL)
-        save_seen_domains()
-        logger.info(f"Total seen domains {len(seen_domains)}")
-        print(f"[{datetime.utcnow()}] Autosaved {len(seen_domains)} domains to {SEEN_DOMAINS_FILE}")
+        save_seen_urls()
+        logger.info(f"Total seen domains {len(seen_urls)}")
+        print(f"[{datetime.utcnow()}] Autosaved {len(seen_urls)} domains to {seen_urls_FILE}")
 
 
 async def send_discord(msg: str):
@@ -98,19 +108,49 @@ async def send_discord(msg: str):
 
 
 async def daily_report():
-    """Send a hourly report every 24h."""
+    """Send hourly report."""
     while True:
         await asyncio.sleep(DISCORD_UPDATE_INTERVAL)
+
+        total_processed = stats["benign"] + stats["malicious"]
+        elapsed = time.time() - stats["start_time"]
+        rate = total_processed / elapsed if elapsed > 0 else 0
+
+        remaining = malicious_queue.qsize() + benign_queue.qsize()
+        eta = remaining / rate if rate > 0 else -1
+
         msg = f"""
 **Crawler Report**
+Processed: {total_processed}
+Elapsed time: {format_eta(elapsed)}
+Processing rate: {rate:.2f} domains/sec
+
+Remaining: {remaining}
+ETA: {format_eta(eta)}
+
 Benign: {stats['benign']}
+Benign Queue size: {benign_queue.qsize()}
+
 Malicious: {stats['malicious']}
+Malicious Queue size: {malicious_queue.qsize()}
+
 Errors: {stats['errors']}
-Browser Failures: {stats['browser_fail']}
+
+Timeouts: {stats['timeout']}
+DNS Fail: {stats['dns_fail']}
+Connection Fail: {stats['connection_fail']}
+HTTP Errors: {stats['http_error']}
+Other: {stats['other_error']}
 Start Time: {time.ctime(stats['start_time'])}
 """
         await send_discord(msg)
 
+def format_eta(seconds):
+    if seconds < 0:
+        return "N/A"
+    mins, secs = divmod(int(seconds), 60)
+    hours, mins = divmod(mins, 60)
+    return f"{hours}h {mins}m {secs}s"
 
 # =========================
 # Domain features
@@ -174,7 +214,7 @@ async def playwright_features(context, url):
 
     page.on("request", request_listener)
 
-    page.add_init_script("""
+    await page.add_init_script("""
         window.__eval_used = false;
         const originalEval = window.eval;
         window.eval = function() {
@@ -225,7 +265,7 @@ async def playwright_features(context, url):
         "popup_window": popup_window,
         "document_location_change": location_change,
         "canvas_fingerprint": canvas_fp,
-        "page_size": len(html)/1024
+        "page_size": float(len(html) / 1024)
     }
 
     page.remove_listener("request", request_listener)
@@ -261,8 +301,8 @@ async def csv_writer():
 
     # Open files
     with open(BENIGN_OUTPUT, "a", newline="") as f_b, open(MALICIOUS_OUTPUT, "a", newline="") as f_m:
-        writer_b = csv.writer(f_b)
-        writer_m = csv.writer(f_m)
+        writer_b = csv.writer(f_b, quoting=csv.QUOTE_ALL)
+        writer_m = csv.writer(f_m, quoting=csv.QUOTE_ALL)
 
         # Write header if file is empty
         if os.stat(BENIGN_OUTPUT).st_size == 0:
@@ -277,6 +317,30 @@ async def csv_writer():
             (writer_b if label == 0 else writer_m).writerow(row)
             write_queue.task_done()
 
+async def failed_writer():
+    header = ["timestamp", "domain", "label", "error_type", "error_message"]
+
+    with open(FAILED_OUTPUT, "a", newline="") as f:
+        writer = csv.writer(f)
+
+        # Write header if empty
+        if os.stat(FAILED_OUTPUT).st_size == 0:
+            writer.writerow(header)
+            f.flush()
+
+        while True:
+            domain, label, error_type, error_msg = await failed_queue.get()
+
+            writer.writerow([
+                datetime.utcnow().isoformat(),
+                domain,
+                label,
+                error_type,
+                error_msg[:200]  # truncate to avoid huge logs
+            ])
+            f.flush()
+
+            failed_queue.task_done()
 
 # =========================
 # Worker
@@ -308,24 +372,55 @@ async def worker(worker_id):
                                            return_exceptions=True)
 
             for (domain, label), res in zip(batch, results):
-                if isinstance(res, Exception):
-                    logging.error("Failed to extract features for domain %s", domain)
-                    logging.error(res)
-                    stats["browser_fail"] += 1
-                    stats["errors"] += 1
-                else:
-                    res["tld_entropy"] = tld_entropy(domain)
-                    res["cert_valid"] = await certificate_valid(domain)
-                    res["domain_age"] = await domain_age(domain)
-                    await write_queue.put((domain, res, label))
-                    seen_domains.add(domain)
-                    pending_domains.remove(domain)
-                    stats["benign" if label == 0 else "malicious"] += 1
-                if label == 1:
-                    malicious_queue.task_done()
-                else:
-                    benign_queue.task_done()
-                processed += 1
+                try:
+                    if isinstance(res, Exception):
+                        err_str = str(res).lower()
+
+                        logger.error("Domain failed: %s | Error: %s", domain, err_str)
+
+                        stats["errors"] += 1
+
+                        if "timeout" in err_str:
+                            error_type = "timeout"
+                            stats["timeout"] += 1
+
+                        elif "net::err_name_not_resolved" in err_str or "dns" in err_str:
+                            error_type = "dns_fail"
+                            stats["dns_fail"] += 1
+
+                        elif "connection refused" in err_str or "net::err_connection" in err_str:
+                            error_type = "connection_fail"
+                            stats["connection_fail"] += 1
+
+                        elif "http_status_" in err_str:
+                            error_type = "http_error"
+                            stats["http_error"] += 1
+
+                        else:
+                            error_type = "other"
+                            stats["other_error"] += 1
+
+                        await failed_queue.put((domain, label, error_type, str(res)))
+
+                    else:
+                        res["tld_entropy"] = tld_entropy(urlparse(domain).netloc)
+                        res["cert_valid"] = await certificate_valid(urlparse(domain).netloc)
+                        res["domain_age"] = await domain_age(urlparse(domain).netloc)
+
+                        await write_queue.put((domain, res, label))
+
+                        stats["benign" if label == 0 else "malicious"] += 1
+
+                finally:
+                    pending_domains.discard(domain)
+                    seen_urls.add(domain)
+
+                    if label == 1:
+                        malicious_queue.task_done()
+                    else:
+                        benign_queue.task_done()
+
+                    processed += 1
 
             if processed >= BROWSER_RESTART_INTERVAL:
                 await context.close()
@@ -338,42 +433,82 @@ async def worker(worker_id):
 # =========================
 # Feed ingestion
 # =========================
-async def fetch_feed(session, url, label):
+async def fetch_feed_Phishtank(session, url, label):
+    try:
+        HEADERS = {
+            "User-Agent": f"phishtank/{PHISHTANK_USERNAME or 'research'}"
+        }
+
+        async with session.get(url, headers=HEADERS) as r:
+            if r.status != 200:
+                logger.error(f"Feed fetch for {url} error:", r)
+                return
+            text = await r.text()
+            lines = text.splitlines()
+
+            for row in csv.reader(lines[1:]):
+                if len(row) > 1:
+                    url_entry = row[1].strip()
+                    await enqueue_url(url_entry, label)
+    except Exception as e:
+        print("Feed fetch error:", e)
+
+async def fetch_feed_Urlhause(session, url, label):
+    try:
+        async with session.get(url) as r:
+            if r.status != 200:
+                logger.error(f"Feed fetch for {url} error:", r)
+                return
+            zip_bytes = await r.read()
+
+            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+                csv_filename = z.namelist()[0]
+
+                with z.open(csv_filename) as f:
+                    reader = csv.reader(
+                        line for line in io.TextIOWrapper(f, encoding="utf-8")
+                        if not line.startswith("#"))
+
+                    for row in reader:
+                        if len(row) < 3:
+                            continue
+                        url_entry = row[2].strip()
+                        await enqueue_url(url_entry, label)
+    except Exception as e:
+        print("Feed fetch error:", e)
+
+async def fetch_feed_Openphish(session, url, label):
     try:
         HEADERS = {
             "User-Agent": "Mozilla/5.0 (QRPhishCrawler Research Bot)"
         }
 
         async with session.get(url, headers=HEADERS) as r:
+            if r.status != 200:
+                logger.error(f"Feed fetch for {url} error:", r)
+                return
             text = await r.text()
             lines = text.splitlines()
-            if label == 1 and url == PHISHTANK_FEED:
-                for row in csv.reader(lines[1:]):
-                    if len(row) > 1:
-                        domain = row[1].strip()
-                        if domain and domain not in seen_domains and domain not in pending_domains:
-                            pending_domains.add(domain)
-                            await malicious_queue.put((domain, label))
-            else:
-                for line in lines:
-                    domain = line.strip()
-                    if domain and domain not in seen_domains and domain not in pending_domains:
-                        pending_domains.add(domain)
-                        await malicious_queue.put((domain, label))
+            for line in lines:
+                url_entry = line.strip()
+                await enqueue_url(url_entry, label)
     except Exception as e:
-        #logger.error("Unable to fetch feed for {}".format(url))
         print("Feed fetch error:", e)
 
+async def enqueue_url(url_entry, label):
+    if url_entry and url_entry not in seen_urls and url_entry not in pending_domains:
+        pending_domains.add(url_entry)
+        await malicious_queue.put((url_entry, label))
 
 async def load_benign(file, label=0):
     with open(file, newline="") as f:
         reader = csv.reader(f)
         for row in reader:
             if len(row) >= 2:
-                domain = row[1].strip()
-                if domain and domain not in seen_domains and domain not in pending_domains:
-                    pending_domains.add(domain)
-                    await benign_queue.put((domain, label))
+                url_entry = row[1].strip()
+                if url_entry and url_entry not in seen_urls and url_entry not in pending_domains:
+                    pending_domains.add(url_entry)
+                    await benign_queue.put((url_entry, label))
 
 
 # =========================
@@ -390,14 +525,15 @@ async def feed_loop():
                 logger.info("Refreshing phishing feeds")
 
                 await asyncio.gather(
-                    fetch_feed(session, OPENPHISH_FEED, 1),
-                    fetch_feed(session, PHISHTANK_FEED, 1),
+                    fetch_feed_Openphish(session, OPENPHISH_FEED, 1),
+                    fetch_feed_Phishtank(session, PHISHTANK_FEED, 1),
+                    fetch_feed_Urlhause(session, URLHAUS_FEED, 1)
                 )
 
                 logger.info(
                     "Feed refresh complete | queue size: %s | seen urls: %s",
                     malicious_queue.qsize(),
-                    len(seen_domains)
+                    len(seen_urls)
                 )
 
             except Exception as e:
@@ -412,12 +548,13 @@ async def feed_loop():
 # =========================
 async def main():
     logger.info("Starting crawling domains")
-    load_seen_domains()
+    load_seen_urls()
 
     asyncio.create_task(feed_loop())
     asyncio.create_task(daily_report())
     asyncio.create_task(csv_writer())
-    asyncio.create_task(autosave_seen_domains())
+    asyncio.create_task(failed_writer())
+    asyncio.create_task(autosave_seen_urls())
 
     async with aiohttp.ClientSession() as session:
         logger.info("downloading data")
@@ -429,7 +566,7 @@ async def main():
 
     await asyncio.Event().wait()
 
-    save_seen_domains()
+    save_seen_urls()
 
 
 if __name__ == "__main__":

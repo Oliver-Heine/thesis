@@ -14,10 +14,16 @@ services:
       # Telegram
       DISCORD_WEBHOOK: "https://discord.com/api/webhooks/1483054440520093728/JND8nMaVqEJqdOSFw7WeCZ_aMaR__v01DvLAqqHwT1Sh_27eJlq-F3VdHD_LCqXe3gRD"
 
+      # API KEYS
+      OPENPHISH_API_KEY: ""
+      PHISHTANK_API_KEY: ""
+      URLHAUS_API_KEY: ""
       # Feeds
       OPENPHISH_FEED: "https://openphish.com/feed.txt"
-      PHISHTANK_FEED: "https://data.phishtank.com/data/online-valid.csv"
+      PHISHTANK_FEED: "http://data.phishtank.com/data/${PHISHTANK_API_KEY}/online-valid.csv"
+      URLHAUS_FEED: "https://urlhaus-api.abuse.ch/files/exports/recent.csv?auth-key=${URLHAUS_API_KEY}"
 
+      PHISHTANK_USERNAME: ""
       # Crawler settings
       NUM_WORKERS: 5
       NUM_TABS: 4
@@ -29,7 +35,8 @@ services:
       # Output files (inside /data volume)
       BENIGN_OUTPUT: "/data/dataset_benign.csv"
       MALICIOUS_OUTPUT: "/data/dataset_malicious.csv"
-      SEEN_DOMAINS_FILE: "/data/seen_domains.pkl"
+      SEEN_URLS_FILE: "/data/seen_urls.pkl"
+      FAILED_OUTPUT: "/data/failed_domains.csv"
 
     command: >
       bash -c "
