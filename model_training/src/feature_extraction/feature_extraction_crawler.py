@@ -33,6 +33,7 @@ PHISHTANK_FEED = os.getenv("PHISHTANK_FEED")
 PHISHTANK_USERNAME = os.getenv("PHISHTANK_USERNAME")
 URLHAUS_FEED = os.getenv("URLHAUS_FEED")
 SAVE_INTERVAL = int(os.getenv("SAVE_INTERVAL", 300))  # seconds
+FEED_REFRESH_TIME = int(os.getenv("FEED_REFRESH_TIME", 300))  # seconds
 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 DISCORD_UPDATE_INTERVAL = int(os.getenv("DISCORD_UPDATE_INTERVAL", 3600))
@@ -90,7 +91,7 @@ async def autosave_seen_urls():
         await asyncio.sleep(SAVE_INTERVAL)
         save_seen_urls()
         logger.info(f"Total seen domains {len(seen_urls)}")
-        print(f"[{datetime.utcnow()}] Autosaved {len(seen_urls)} domains to {seen_urls_FILE}")
+        print(f"[{datetime.utcnow()}] Autosaved {len(seen_urls)} domains to {SEEN_URLS_FILE}")
 
 
 async def send_discord(msg: str):
@@ -351,25 +352,28 @@ async def worker(worker_id):
         context = await browser.new_context()
         processed = 0
 
+        last_restart = time.time()
+
         while True:
             batch = []
             for _ in range(NUM_TABS):
 
-                if not malicious_queue.empty():
-                    batch.append(await malicious_queue.get())
-
-                elif not benign_queue.empty():
-                    batch.append(await benign_queue.get())
-
-                else:
-                    break
+                try:
+                    batch.append(malicious_queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    try:
+                        batch.append(benign_queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
 
             if not batch:
                 await asyncio.sleep(0.1)
                 continue
 
-            results = await asyncio.gather(*[playwright_features(context, domain) for domain, label in batch],
-                                           return_exceptions=True)
+            results = await asyncio.gather(
+                *[safe_playwright(context, domain) for domain, label in batch],
+                return_exceptions=True
+            )
 
             for (domain, label), res in zip(batch, results):
                 try:
@@ -422,13 +426,22 @@ async def worker(worker_id):
 
                     processed += 1
 
-            if processed >= BROWSER_RESTART_INTERVAL:
+            if processed >= BROWSER_RESTART_INTERVAL or time.time() - last_restart > 300:
                 await context.close()
                 await browser.close()
                 browser = await p.chromium.launch(headless=True)
                 context = await browser.new_context()
                 processed = 0
+                last_restart = time.time()
 
+async def safe_playwright(context, url):
+    try:
+        return await asyncio.wait_for(
+            playwright_features(context, url),
+            timeout=20  # hard cap (seconds)
+        )
+    except asyncio.TimeoutError:
+        raise Exception("timeout")
 
 # =========================
 # Feed ingestion
@@ -457,25 +470,25 @@ async def fetch_feed_Urlhause(session, url, label):
     try:
         async with session.get(url) as r:
             if r.status != 200:
-                logger.error(f"Feed fetch for {url} error:", r)
+                logger.error(f"Feed fetch for {url} failed with status {r.status}")
                 return
-            zip_bytes = await r.read()
 
-            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
-                csv_filename = z.namelist()[0]
+            text = await r.text()
 
-                with z.open(csv_filename) as f:
-                    reader = csv.reader(
-                        line for line in io.TextIOWrapper(f, encoding="utf-8")
-                        if not line.startswith("#"))
+            reader = csv.reader(
+                line for line in io.StringIO(text)
+                if not line.startswith("#")
+            )
 
-                    for row in reader:
-                        if len(row) < 3:
-                            continue
-                        url_entry = row[2].strip()
-                        await enqueue_url(url_entry, label)
+            for row in reader:
+                if len(row) < 3:
+                    continue
+
+                url_entry = row[2].strip()
+                await enqueue_url(url_entry, label)
+
     except Exception as e:
-        print("Feed fetch error:", e)
+        logger.error(f"Feed fetch error for {url}: {e}")
 
 async def fetch_feed_Openphish(session, url, label):
     try:
@@ -541,7 +554,7 @@ async def feed_loop():
                 # logger.error("Feed refresh failed: %s", e)
 
             # Wait 30 minutes
-            await asyncio.sleep(1800)
+            await asyncio.sleep(FEED_REFRESH_TIME)
 
 # =========================
 # Main

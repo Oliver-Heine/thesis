@@ -31,6 +31,7 @@ services:
       BROWSER_RESTART_INTERVAL: 100
       SAVE_INTERVAL: 300
       DISCORD_UPDATE_INTERVAL: 3600
+      FEED_REFRESH_TIME: 10800
 
       # Output files (inside /data volume)
       BENIGN_OUTPUT: "/data/dataset_benign.csv"
