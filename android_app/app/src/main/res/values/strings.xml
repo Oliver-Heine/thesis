@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">QRQuishing</string>
+    <string name="verdict_malicious_display_name">Malicious</string>
+    <string name="verdict_benign_display_name">Benign</string>
+    <string name="verdict_uncertain_display_name">Uncertain</string>
 </resources>
