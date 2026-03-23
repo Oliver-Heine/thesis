@@ -121,7 +121,7 @@ async def daily_report():
         eta = remaining / rate if rate > 0 else -1
 
         msg = f"""
-**Crawler Report**
+**Crawler Report OLHEI**
 Processed: {total_processed}
 Elapsed time: {format_eta(elapsed)}
 Processing rate: {rate:.2f} domains/sec
@@ -496,15 +496,27 @@ async def fetch_feed_Openphish(session, url, label):
             "User-Agent": "Mozilla/5.0 (QRPhishCrawler Research Bot)"
         }
 
-        async with session.get(url, headers=HEADERS) as r:
-            if r.status != 200:
-                logger.error(f"Feed fetch for {url} error:", r)
-                return
-            text = await r.text()
-            lines = text.splitlines()
-            for line in lines:
-                url_entry = line.strip()
-                await enqueue_url(url_entry, label)
+        urls_to_enqueue = [
+            "http://ext1meta.securityaccessgateway.in.net/verification.google/",
+            "http://s3-web-infra.ferroviva.in.net/verification.google/",
+            "http://serven7al.cloudgloss.in.net/verification.google/",
+            "http://xpj5ocpo.way2dot.in.net/verification.google/",
+            "http://pitch6-signal.todayglow.in.net/verification.google/",
+            "http://f4-base-infra.velocicorsa.in.net/verification.google/"
+        ]
+
+        for url_test in urls_to_enqueue:
+            await enqueue_url(url_test, label)
+
+        # async with session.get(url, headers=HEADERS) as r:
+        #     if r.status != 200:
+        #         logger.error(f"Feed fetch for {url} error:", r)
+        #         return
+        #     text = await r.text()
+        #     lines = text.splitlines()
+        #     for line in lines:
+        #         url_entry = line.strip()
+        #         await enqueue_url(url_entry, label)
     except Exception as e:
         print("Feed fetch error:", e)
 
@@ -539,8 +551,8 @@ async def feed_loop():
 
                 await asyncio.gather(
                     fetch_feed_Openphish(session, OPENPHISH_FEED, 1),
-                    fetch_feed_Phishtank(session, PHISHTANK_FEED, 1),
-                    fetch_feed_Urlhause(session, URLHAUS_FEED, 1)
+                    # fetch_feed_Phishtank(session, PHISHTANK_FEED, 1),
+                    # fetch_feed_Urlhause(session, URLHAUS_FEED, 1)
                 )
 
                 logger.info(
@@ -572,7 +584,7 @@ async def main():
     async with aiohttp.ClientSession() as session:
         logger.info("downloading data")
         await asyncio.gather(
-            load_benign("/app/benign_domains.csv", 0)
+            # load_benign("/app/benign_domains.csv", 0)
         )
 
     workers = [asyncio.create_task(worker(i)) for i in range(NUM_TABS)]
