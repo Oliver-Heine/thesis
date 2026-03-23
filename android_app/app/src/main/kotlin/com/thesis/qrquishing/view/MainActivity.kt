@@ -55,7 +55,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupViewModel() {
-        val factory = MainViewModelFactory(ModelProvider.create(this))
+        val factory = MainViewModelFactory(ModelProvider.create(this, "none"))
         viewModel = ViewModelProvider(this, factory)[MainViewModel::class.java]
     }
 

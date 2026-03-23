@@ -6,25 +6,23 @@ import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
 import java.io.BufferedReader
 import java.io.InputStreamReader
-
-private const val MODAL_FILE_NAME = "distilbert_model.tflite"
-
 private const val VOCAB_FILE_NAME = "vocab.txt"
 
 object ModelProvider {
     private const val TAG = "QRQuishing"
     private const val MODEL_SEQUENCE_LENGTH = 128
 
-    fun create(activity: AppCompatActivity): TFLiteClassifier {
-        val tflite = loadModel(activity)
-        val vocab = loadVocab(activity)
+    fun create(activity: AppCompatActivity, modelName: String): TFLiteClassifier {
+        val tflite = loadModel(activity, modelName)
+        val vocab = loadVocab(activity, modelName)
         val tokenizer = Tokenizer(vocab)
         return TFLiteClassifier(tflite, tokenizer, vocab)
     }
 
-    private fun loadModel(activity: AppCompatActivity): Interpreter {
+    private fun loadModel(activity: AppCompatActivity, modelName: String): Interpreter {
         return try {
-            val modelBuffer = FileUtil.loadMappedFile(activity, MODAL_FILE_NAME)
+            val modelPath = modelName.replace(".tflite", "")
+            val modelBuffer = FileUtil.loadMappedFile(activity, "tflite/" + modelPath + "/" + modelName)
             val options = Interpreter.Options().apply { numThreads = 2 }
             val tflite = Interpreter(modelBuffer, options)
 
@@ -42,10 +40,11 @@ object ModelProvider {
         }
     }
 
-    private fun loadVocab(activity: AppCompatActivity): Map<String, Int>{
+    private fun loadVocab(activity: AppCompatActivity, modelName: String): Map<String, Int>{
         return try {
+            val modelPath = modelName.replace(".tflite", "")
             val mutableVocab = mutableMapOf<String, Int>()
-            activity.assets.open(VOCAB_FILE_NAME).use { stream ->
+            activity.assets.open("tflite/" + modelPath + "/"+ VOCAB_FILE_NAME).use { stream ->
                 BufferedReader(InputStreamReader(stream))
                     .lineSequence()
                     .forEachIndexed { idx, line ->

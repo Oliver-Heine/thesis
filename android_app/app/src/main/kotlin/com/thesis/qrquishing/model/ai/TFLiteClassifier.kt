@@ -77,6 +77,15 @@ class TFLiteClassifier(
         return outputBuffer[0]
     }
 
+    fun close() {
+        try {
+            tflite.close()
+            Log.d(TAG, "TFLiteInterpreter closed successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing TFLiteInterpreter", e)
+        }
+    }
+
     private fun softmax(logits: FloatArray): Pair<Float, Float> {
         val maxLogit = logits.maxOrNull() ?: 0f
         val exps = logits.map { exp((it - maxLogit).toDouble()).toFloat() }

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Model selection if you want -->
+    <Spinner
+        android:id="@+id/spinnerModels"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <!-- Start benchmark button -->
+    <Button
+        android:id="@+id/btnStartBenchmark"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start Benchmark" />
+
+    <!-- Progress indicator -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:progress="0"
+        android:max="100" />
+
+    <!-- TextView for live reporting -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Ready"
+        android:paddingTop="8dp"/>
+</LinearLayout>
