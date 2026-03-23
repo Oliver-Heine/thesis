@@ -1,8 +1,8 @@
-package com.thesis.qrquishing.ai
+package com.thesis.qrquishing.model.ai
 
 import android.util.Log
-import com.thesis.qrquishing.domain.UrlAnalyzer
-import com.thesis.qrquishing.domain.Verdict
+import com.thesis.qrquishing.model.UrlAnalyzer
+import com.thesis.qrquishing.model.dto.Verdict
 import org.tensorflow.lite.Interpreter
 import kotlin.math.exp
 
@@ -13,7 +13,7 @@ class TFLiteClassifier(
 
     companion object {
         private const val TAG = "QRQuishing"
-        private const val CONFIDENCE_THRESHOLD = 0.80f
+        private const val CONFIDENCE_THRESHOLD = 0.90f
         private const val MODEL_SEQUENCE_LENGTH = 128
     }
 

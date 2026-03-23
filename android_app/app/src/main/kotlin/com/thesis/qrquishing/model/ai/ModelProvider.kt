@@ -1,4 +1,4 @@
-package com.thesis.qrquishing.ai
+package com.thesis.qrquishing.model.ai
 
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
@@ -6,6 +6,10 @@ import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
 import java.io.BufferedReader
 import java.io.InputStreamReader
+
+private const val MODAL_FILE_NAME = "distilbert_model.tflite"
+
+private const val VOCAB_FILE_NAME = "vocab.txt"
 
 object ModelProvider {
     private const val TAG = "QRQuishing"
@@ -20,7 +24,7 @@ object ModelProvider {
 
     private fun loadModel(activity: AppCompatActivity): Interpreter {
         return try {
-            val modelBuffer = FileUtil.loadMappedFile(activity, "distilbert_model.tflite")
+            val modelBuffer = FileUtil.loadMappedFile(activity, MODAL_FILE_NAME)
             val options = Interpreter.Options().apply { numThreads = 2 }
             val tflite = Interpreter(modelBuffer, options)
 
@@ -29,19 +33,8 @@ object ModelProvider {
             for (i in 0 until tflite.inputTensorCount) {
                 tflite.resizeInput(i, inputShape)
             }
+
             tflite.allocateTensors()
-
-            // Log input/output info
-            for (i in 0 until tflite.inputTensorCount) {
-                val t = tflite.getInputTensor(i)
-                Log.i(TAG, "Input[$i]: name=${t.name()}, shape=${t.shape().contentToString()}, dtype=${t.dataType()}")
-            }
-            for (i in 0 until tflite.outputTensorCount) {
-                val t = tflite.getOutputTensor(i)
-                Log.i(TAG, "Output[$i]: name=${t.name()}, shape=${t.shape().contentToString()}, dtype=${t.dataType()}")
-            }
-
-            Log.i(TAG, "TFLite model loaded and resized to $MODEL_SEQUENCE_LENGTH")
             tflite
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load TFLite model", e)
@@ -52,7 +45,7 @@ object ModelProvider {
     private fun loadVocab(activity: AppCompatActivity): Map<String, Int>{
         return try {
             val mutableVocab = mutableMapOf<String, Int>()
-            activity.assets.open("vocab.txt").use { stream ->
+            activity.assets.open(VOCAB_FILE_NAME).use { stream ->
                 BufferedReader(InputStreamReader(stream))
                     .lineSequence()
                     .forEachIndexed { idx, line ->
@@ -67,7 +60,7 @@ object ModelProvider {
                 throw IllegalStateException("vocab.txt is missing required tokens: $missing")
             }
 
-            Log.i(TAG, "Vocab loaded: ${mutableVocab.size} tokens")
+            Log.d(TAG, "Vocab loaded: ${mutableVocab.size} tokens")
             mutableVocab
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load vocab", e)

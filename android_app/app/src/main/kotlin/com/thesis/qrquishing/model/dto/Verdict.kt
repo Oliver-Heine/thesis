@@ -1,4 +1,4 @@
-package com.thesis.qrquishing.domain
+package com.thesis.qrquishing.model.dto
 
 import com.thesis.qrquishing.R
 

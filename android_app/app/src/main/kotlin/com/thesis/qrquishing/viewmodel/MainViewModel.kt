@@ -4,8 +4,10 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.thesis.qrquishing.ai.TFLiteClassifier
-import com.thesis.qrquishing.domain.ModelResult
+import com.thesis.qrquishing.data.BackendService
+import com.thesis.qrquishing.model.ai.TFLiteClassifier
+import com.thesis.qrquishing.model.dto.ModelResult
+import com.thesis.qrquishing.model.dto.Verdict
 import com.thesis.qrquishing.utils.Event
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,6 +22,8 @@ class MainViewModel(
 
     private val _warningEvent = MutableLiveData<Event<ModelResult>>()
     val warningEvent: LiveData<Event<ModelResult>> = _warningEvent
+    val userAllowedOffDevice: Boolean = true
+    val externalBackendService: BackendService = BackendService()
 
     fun onQrScanned(rawUrl: String) {
         val url = rawUrl.trim()
@@ -32,6 +36,10 @@ class MainViewModel(
         viewModelScope.launch {
             val (verdict, confidence) = withContext(Dispatchers.Default) {
                 classifier.classify(url)
+            }
+
+            if (verdict == Verdict.UNCERTAIN && userAllowedOffDevice) {
+                val result = externalBackendService.validate(url)
             }
 
             val modelResult = ModelResult(url, verdict, confidence)

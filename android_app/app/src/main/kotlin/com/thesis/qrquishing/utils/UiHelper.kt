@@ -1,11 +1,11 @@
-package com.thesis.qrquishing.ui
+package com.thesis.qrquishing.utils
 
 import android.app.AlertDialog
 import android.content.Context
 import android.view.View
 import androidx.core.content.ContextCompat
 import com.thesis.qrquishing.databinding.ActivityMainBinding
-import com.thesis.qrquishing.domain.Verdict
+import com.thesis.qrquishing.model.dto.Verdict
 
 class UiHelper(
     private val context: Context,

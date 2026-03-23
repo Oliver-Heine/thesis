@@ -1,4 +1,4 @@
-package com.thesis.qrquishing.ui
+package com.thesis.qrquishing.view
 
 import android.Manifest
 import android.os.Bundle
@@ -7,15 +7,15 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
-import com.thesis.qrquishing.ai.ModelProvider
+import com.thesis.qrquishing.model.ai.ModelProvider
 import com.thesis.qrquishing.databinding.ActivityMainBinding
-import com.thesis.qrquishing.permission.PermissionValidator.hasCameraPermission
+import com.thesis.qrquishing.model.permission.PermissionValidator.hasCameraPermission
+import com.thesis.qrquishing.utils.UiHelper
 import com.thesis.qrquishing.viewmodel.MainViewModel
 import com.thesis.qrquishing.viewmodel.MainViewModelFactory
 
 /**
- * Main activity: scans a QR code, runs TFLite inference, and warns the user
- * if the decoded URL is classified as malicious or uncertain.
+ * Main activity: handles all UI interactions.
  */
 class MainActivity : AppCompatActivity() {
     private val requestCameraPermission =

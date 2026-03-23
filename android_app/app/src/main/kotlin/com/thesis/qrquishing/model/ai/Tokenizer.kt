@@ -1,4 +1,4 @@
-package com.thesis.qrquishing.ai
+package com.thesis.qrquishing.model.ai
 
 /**
  * Standard WordPiece tokenizer.

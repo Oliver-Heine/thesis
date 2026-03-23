@@ -1,4 +1,4 @@
-package com.thesis.qrquishing.permission
+package com.thesis.qrquishing.model.permission
 
 import android.Manifest
 import android.content.Context

@@ -2,7 +2,7 @@ package com.thesis.qrquishing.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.thesis.qrquishing.ai.TFLiteClassifier
+import com.thesis.qrquishing.model.ai.TFLiteClassifier
 
 class MainViewModelFactory(
     private val classifier: TFLiteClassifier
