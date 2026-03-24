@@ -15,22 +15,21 @@ class MetricsCollector(private val context: Context) {
     private var lastCpuIdle: Long = 0
 
     /** Add a batch/chunk of latency measurements */
-    fun addChunk(latenciesChunk: List<Double>, chunkIndex: Int) {
+    fun addChunk(latenciesChunk: List<Double>, chunkIndex: Int, chunkTime: Double) {
         if (latenciesChunk.isEmpty()) return
 
         latencies.addAll(latenciesChunk)
         totalSamples += latenciesChunk.size
 
         val avgLatency = latenciesChunk.average()
-        val avgCpu = getCpuUsagePercent()
-        val avgBatteryCurrent = getBatteryCurrentUa()
+        val avgBatteryCurrent = getBatteryDischargeUa()
 
         chunkStats.add(
             ChunkStats(
                 chunkIndex = chunkIndex,
                 avgLatencyMs = avgLatency,
                 sampleCount = latenciesChunk.size,
-                avgCpuPercent = avgCpu,
+                chunkRunTime = chunkTime,
                 avgBatteryCurrentUa = avgBatteryCurrent
             )
         )
@@ -46,7 +45,7 @@ class MetricsCollector(private val context: Context) {
     fun computeMetrics(): InferenceMetrics {
         val sorted = latencies.sorted()
         fun percentile(p: Double): Double {
-            val index = (p * sorted.size).toInt().coerceAtMost(sorted.lastIndex)
+            val index = ((p * (sorted.size - 1))).toInt()
             return sorted[index]
         }
 
@@ -69,43 +68,17 @@ class MetricsCollector(private val context: Context) {
         totalSamples = 0
     }
 
-    private fun getBatteryCurrentUa(): Float {
+    private fun getBatteryDischargeUa(): Float {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         val currentNow = bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-        return kotlin.math.abs(currentNow.toFloat()) // treat charging as positive
-    }
 
-    /** Returns approximate CPU usage (%) since last call */
-    private fun getCpuUsagePercent(): Float {
-        try {
-            val reader1 = RandomAccessFile("/proc/stat", "r")
-            val line1 = reader1.readLine()
-            reader1.close()
-
-            val toks1 = line1.split("\\s+".toRegex())
-            val idle1 = toks1[4].toLong()
-            val total1 = toks1.drop(1).map { it.toLong() }.sum()
-
-            // Wait a tiny bit (200ms)
-            Thread.sleep(200)
-
-            val reader2 = RandomAccessFile("/proc/stat", "r")
-            val line2 = reader2.readLine()
-            reader2.close()
-
-            val toks2 = line2.split("\\s+".toRegex())
-            val idle2 = toks2[4].toLong()
-            val total2 = toks2.drop(1).map { it.toLong() }.sum()
-
-            val totalDiff = total2 - total1
-            val idleDiff = idle2 - idle1
-
-            if (totalDiff == 0L) return 0f
-            return ((totalDiff - idleDiff).toFloat() / totalDiff.toFloat()) * 100f
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return 0f
+        // Convention (on most devices):
+        // negative = discharging
+        // positive = charging
+        return if (currentNow < 0) {
+            -currentNow.toFloat() // convert to positive discharge value
+        } else {
+            0f // ignore charging
         }
     }
 }

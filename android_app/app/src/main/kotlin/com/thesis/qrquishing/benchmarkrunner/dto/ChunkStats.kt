@@ -4,6 +4,6 @@ data class ChunkStats(
     val chunkIndex: Int,
     val avgLatencyMs: Double,
     val sampleCount: Int,
-    val avgCpuPercent: Float = 0f,
+    val chunkRunTime: Double = 0.0,
     val avgBatteryCurrentUa: Float = 0f
 )

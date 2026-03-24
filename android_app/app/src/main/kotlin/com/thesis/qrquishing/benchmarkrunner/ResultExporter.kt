@@ -25,11 +25,11 @@ class ResultExporter(private val context: Context) {
                 appendLine("Max Latency (ms),${metrics.maxLatencyMs}")
                 appendLine("")
 
-                appendLine("ChunkIndex,AvgLatencyMs,SampleCount,AvgCpuPercent,AvgBatteryCurrentUa")
+                appendLine("ChunkIndex,AvgLatencyMs,SampleCount,ChunkRunTime,AvgBatteryCurrentUa")
                 metrics.chunkStats.forEach { chunk ->
                     appendLine(
                         "${chunk.chunkIndex},${chunk.avgLatencyMs},${chunk.sampleCount}," +
-                                "${chunk.avgCpuPercent},${chunk.avgBatteryCurrentUa}"
+                                "${chunk.chunkRunTime},${chunk.avgBatteryCurrentUa}"
                     )
                 }
 

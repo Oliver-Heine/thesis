@@ -38,6 +38,7 @@ class InferenceRunner(
             context = context,
             chunkSize = chunkSize
         ) { chunk, chunkIndex ->
+            val chunkStart = System.nanoTime()
 
             val chunkLatencies = mutableListOf<Double>()
 
@@ -50,8 +51,10 @@ class InferenceRunner(
                 val latencyMs = (end - start) / 1_000_000.0
                 chunkLatencies.add(latencyMs)
             }
+            val chunkEnd = System.nanoTime()
+            val chunkDurationMs = (chunkEnd - chunkStart) / 1_000_000.0
 
-            metricsCollector.addChunk(chunkLatencies, chunkIndex)
+            metricsCollector.addChunk(chunkLatencies, chunkIndex, chunkDurationMs)
             totalProcessed += chunk.size
 
             // Call UI callback
