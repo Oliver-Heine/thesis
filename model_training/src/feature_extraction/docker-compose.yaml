@@ -25,12 +25,12 @@ services:
 
       PHISHTANK_USERNAME: ""
       # Crawler settings
-      NUM_WORKERS: 5
-      NUM_TABS: 4
+      NUM_WORKERS: 6
+      NUM_TABS: 5
       REQUEST_TIMEOUT: 15000
       BROWSER_RESTART_INTERVAL: 100
       SAVE_INTERVAL: 300
-      DISCORD_UPDATE_INTERVAL: 30
+      DISCORD_UPDATE_INTERVAL: 3600
       FEED_REFRESH_TIME: 10800
 
       # Output files (inside /data volume)
