@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  qrphish_crawler:
+    image: mcr.microsoft.com/playwright/python:v1.53.0-jammy
+    container_name: qrphish_crawler
+    working_dir: /app
+    volumes:
+      - ./crawler_data:/data        # Persistent storage for CSVs and seen_domains
+      - ./feature_extraction_crawler.py:/app/crawler.py
+      - ./requirements.txt:/app/requirements.txt
+      - ./benign_domains.csv:/app/benign_domains.csv
+    environment:
+      # Telegram
+      DISCORD_WEBHOOK: "https://discord.com/api/webhooks/1483054440520093728/JND8nMaVqEJqdOSFw7WeCZ_aMaR__v01DvLAqqHwT1Sh_27eJlq-F3VdHD_LCqXe3gRD"
+
+      # API KEYS
+      OPENPHISH_API_KEY: ""
+      PHISHTANK_API_KEY: ""
+      URLHAUS_API_KEY: ""
+      # Feeds
+      OPENPHISH_FEED: "https://openphish.com/feed.txt"
+      PHISHTANK_FEED: "http://data.phishtank.com/data/${PHISHTANK_API_KEY}/online-valid.csv"
+      URLHAUS_FEED: "https://urlhaus-api.abuse.ch/files/exports/recent.csv?auth-key=${URLHAUS_API_KEY}"
+
+      PHISHTANK_USERNAME: ""
+      # Crawler settings
+      NUM_WORKERS: 5
+      NUM_TABS: 4
+      REQUEST_TIMEOUT: 15000
+      BROWSER_RESTART_INTERVAL: 100
+      SAVE_INTERVAL: 300
+      DISCORD_UPDATE_INTERVAL: 30
+      FEED_REFRESH_TIME: 10800
+
+      # Output files (inside /data volume)
+      BENIGN_OUTPUT: "/data/dataset_benign.csv"
+      MALICIOUS_OUTPUT: "/data/dataset_malicious.csv"
+      SEEN_URLS_FILE: "/data/seen_urls.pkl"
+      FAILED_OUTPUT: "/data/failed_domains.csv"
+
+    command: >
+      bash -c "
+      pip install --upgrade pip && 
+      pip install -r requirements.txt &&
+      playwright install chromium &&
+      python crawler.py
+      "
+    restart: unless-stopped
