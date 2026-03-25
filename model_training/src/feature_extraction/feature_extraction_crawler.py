@@ -109,11 +109,11 @@ async def send_discord(msg: str):
 
 
 async def daily_report():
-    """Send hourly report."""
+    """Send report."""
     while True:
         await asyncio.sleep(DISCORD_UPDATE_INTERVAL)
 
-        total_processed = stats["benign"] + stats["malicious"]
+        total_processed = stats["benign"] + stats["malicious"] + stats["errors"]
         elapsed = time.time() - stats["start_time"]
         rate = total_processed / elapsed if elapsed > 0 else 0
 
@@ -121,21 +121,29 @@ async def daily_report():
         eta = remaining / rate if rate > 0 else -1
 
         msg = f"""
-**Crawler Report**
+-----------**Crawler Report**-----------
 Processed: {total_processed}
-Elapsed time: {format_eta(elapsed)}
-Processing rate: {rate:.2f} domains/sec
+Successful: {stats['benign'] + stats['malicious']}
+Errors: {stats['errors']}
 
+-----------**Speed**-----------
+
+Processing rate: {rate:.2f} domains/sec
+Elapsed time: {format_eta(elapsed)}
 Remaining: {remaining}
 ETA: {format_eta(eta)}
+
+-----------**Benign**-----------
 
 Benign: {stats['benign']}
 Benign Queue size: {benign_queue.qsize()}
 
+-----------**Malicious**-----------
+
 Malicious: {stats['malicious']}
 Malicious Queue size: {malicious_queue.qsize()}
 
-Errors: {stats['errors']}
+-----------**ERRORS**-----------
 
 Timeouts: {stats['timeout']}
 DNS Fail: {stats['dns_fail']}
@@ -152,32 +160,6 @@ def format_eta(seconds):
     mins, secs = divmod(int(seconds), 60)
     hours, mins = divmod(mins, 60)
     return f"{hours}h {mins}m {secs}s"
-
-# =========================
-# Domain features
-# =========================
-def tld_entropy(domain):
-    tld = tldextract.extract(domain).suffix
-    if not tld:
-        return 0
-    probs = [tld.count(c)/len(tld) for c in set(tld)]
-    return -sum(p*math.log2(p) for p in probs)
-
-
-async def domain_age(domain):
-    def _whois():
-        try:
-            w = whois.whois(domain)
-            creation = w.creation_date
-            if isinstance(creation, list):
-                creation = creation[0]
-            if not creation:
-                return -1
-            return (datetime.utcnow() - creation).days
-        except:
-            return -1
-    return await asyncio.to_thread(_whois)
-
 
 async def certificate_valid(domain):
     def _cert():
@@ -201,7 +183,8 @@ async def playwright_features(context, url):
     parsed = urlparse(url)
     page_domain = parsed.netloc
 
-    redirect_chain = []
+    redirect_chain = 0
+    server_redirect_count = 0
     third_party = set()
     uses_eval = 0
     popup_window = 0
@@ -210,10 +193,20 @@ async def playwright_features(context, url):
 
     async def request_listener(request):
         host = urlparse(request.url).netloc
+        nonlocal redirect_chain
         if host and host != page_domain:
             third_party.add(host)
 
+        if request.is_navigation_request():
+            redirect_chain += 1
+
+    def response_listener(response):
+        nonlocal server_redirect_count
+        if response.status in [300, 301, 302, 303, 307, 308]:
+            server_redirect_count += 1
+
     page.on("request", request_listener)
+    page.on("response", response_listener)
 
     await page.add_init_script("""
         window.__eval_used = false;
@@ -240,11 +233,10 @@ async def playwright_features(context, url):
         resp = await page.goto(url, timeout=REQUEST_TIMEOUT, wait_until="domcontentloaded")
         if resp is None or resp.status >= 400:
             raise Exception(f"http_status_{resp.status if resp else 'none'}")
-        redirect_chain.append(url)
-        redirect_chain.append(resp.url)
     except Exception as e:
         #logger.error("Exception occured", exc_info=True)
         page.remove_listener("request", request_listener)
+        page.remove_listener("response", response_listener)
         await page.close()
         raise e
 
@@ -252,15 +244,17 @@ async def playwright_features(context, url):
     uses_eval = 1 if await page.evaluate("window.__eval_used") else 0
     location_change = 1 if await page.evaluate("window.__location_changed") else 0
     canvas_fp = 1 if await page.evaluate("window.__canvas_fp") else 0
+    num_iframes = await page.evaluate("document.querySelectorAll('iframe').length")
 
     soup = BeautifulSoup(html, "html.parser")
     features = {
-        "redirect_count": len(redirect_chain),
+        "redirect_count": max(redirect_chain - 1, 0),
+        "server_redirect_count": server_redirect_count,
         "third_party_domains": len(third_party),
         "login_form": 1 if soup.find("form") else 0,
         "password_input": 1 if soup.find("input", {"type": "password"}) else 0,
         "num_inputs": len(soup.find_all("input")),
-        "num_iframes": len(soup.find_all("iframe")),
+        "num_iframes": num_iframes,
         "external_scripts": sum(1 for s in soup.find_all("script") if s.get("src") and page_domain not in s.get("src")),
         "uses_eval": uses_eval,
         "popup_window": popup_window,
@@ -270,6 +264,7 @@ async def playwright_features(context, url):
     }
 
     page.remove_listener("request", request_listener)
+    page.remove_listener("response", response_listener)
     await page.close()
     return features
 
@@ -281,6 +276,7 @@ async def csv_writer():
     # Define feature labels
     feature_labels = [
         "redirect_count",
+        "server_redirect_count",
         "third_party_domains",
         "login_form",
         "password_input",
@@ -292,9 +288,7 @@ async def csv_writer():
         "document_location_change",
         "canvas_fingerprint",
         "page_size",
-        "tld_entropy",
         "cert_valid",
-        "domain_age"
     ]
 
     # Prepare header row
@@ -354,10 +348,11 @@ async def worker(worker_id):
 
         last_restart = time.time()
 
+        sleep_time = 1
         while True:
             batch = []
-            for _ in range(NUM_TABS):
 
+            for _ in range(NUM_TABS):
                 try:
                     batch.append(malicious_queue.get_nowait())
                 except asyncio.QueueEmpty:
@@ -367,8 +362,11 @@ async def worker(worker_id):
                         break
 
             if not batch:
-                await asyncio.sleep(0.1)
+                sleep_time = min(sleep_time * 2, 600)  # exponential backoff, max 10 min
+                await asyncio.sleep(sleep_time)
                 continue
+            else:
+                sleep_time = 1
 
             results = await asyncio.gather(
                 *[safe_playwright(context, domain) for domain, label in batch],
@@ -407,9 +405,7 @@ async def worker(worker_id):
                         await failed_queue.put((domain, label, error_type, str(res)))
 
                     else:
-                        res["tld_entropy"] = tld_entropy(urlparse(domain).netloc)
                         res["cert_valid"] = await certificate_valid(urlparse(domain).netloc)
-                        res["domain_age"] = await domain_age(urlparse(domain).netloc)
 
                         await write_queue.put((domain, res, label))
 
@@ -438,7 +434,7 @@ async def safe_playwright(context, url):
     try:
         return await asyncio.wait_for(
             playwright_features(context, url),
-            timeout=20  # hard cap (seconds)
+            timeout=60
         )
     except asyncio.TimeoutError:
         raise Exception("timeout")
