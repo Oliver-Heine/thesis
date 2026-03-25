@@ -5,8 +5,8 @@ import tensorflow as tf
 from urllib.parse import urlparse
 from transformers import AutoTokenizer
 
-TFLITE_PATH = "distilbert_model.tflite"
-TOKENIZER_PATH = "OliverHeine/distilbert-base-uncased_train_v2"
+TFLITE_PATH = "tflite/google_mobilebert-uncased/google_mobilebert-uncased.tflite"
+TOKENIZER_PATH = "OliverHeine/google_mobilebert-uncased_train_v2"
 
 
 def normalize_url(url: str) -> str:

@@ -22,7 +22,7 @@
         android:usesCleartextTraffic="false">
 
         <activity
-            android:name=".view.MainActivity"
+            android:name=".view.BenchmarkActivity"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>

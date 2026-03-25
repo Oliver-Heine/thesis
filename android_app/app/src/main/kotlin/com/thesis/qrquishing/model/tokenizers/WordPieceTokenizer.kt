@@ -1,13 +1,13 @@
-package com.thesis.qrquishing.model.ai
+package com.thesis.qrquishing.model.tokenizers
 
 /**
  * Standard WordPiece tokenizer.
  */
-class Tokenizer(private val vocab: Map<String, Int>) {
+class WordPieceTokenizer(private val vocab: Map<String, Int>) : Tokenizer {
     private val unknownId = vocab["[UNK]"] ?: 100
     private val prefix = "##"
 
-    fun tokenize(text: String): List<Int> {
+    override fun tokenize(text: String): List<Int> {
         val tokens = mutableListOf<Int>()
 
         // Split by whitespace

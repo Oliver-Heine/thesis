@@ -22,7 +22,7 @@ class BenchmarkActivity : AppCompatActivity() {
     private val benchmarkScope = CoroutineScope(Dispatchers.Default + Job())
 
     private val models = listOf(
-//        "albert-base-v2.tflite",
+        "albert-base-v2.tflite",
         "distilbert-base-uncased.tflite",
         "google_mobilebert-uncased.tflite",
         "huawei-noah_TinyBERT_General_4L_312D.tflite",

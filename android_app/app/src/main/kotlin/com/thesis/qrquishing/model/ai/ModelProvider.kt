@@ -2,11 +2,21 @@ package com.thesis.qrquishing.model.ai
 
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
+import com.thesis.qrquishing.model.tokenizers.SentencePieceTokenizer
+import com.thesis.qrquishing.model.tokenizers.Tokenizer
+import com.thesis.qrquishing.model.tokenizers.WordPieceTokenizer
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
 import java.io.BufferedReader
 import java.io.InputStreamReader
 private const val VOCAB_FILE_NAME = "vocab.txt"
+
+private const val DISTILBERT_BASE_UNCASED = "distilbert-base-uncased"
+private const val TINYBERT_GENERAL_4L_312D = "huawei-noah_TinyBERT_General_4L_312D"
+private const val TINYBERT_GENERAL_6L_768D = "huawei-noah_TinyBERT_General_6L_768D"
+private const val ALBERT_BASE_V2 = "albert-base-v2"
+private const val MOBILEBERT_UNCASED = "google_mobilebert-uncased"
+
 
 object ModelProvider {
     private const val TAG = "QRQuishing"
@@ -15,7 +25,17 @@ object ModelProvider {
     fun create(activity: AppCompatActivity, modelName: String): TFLiteClassifier {
         val tflite = loadModel(activity, modelName)
         val vocab = loadVocab(activity, modelName)
-        val tokenizer = Tokenizer(vocab)
+
+        val modelKey = modelName.replace(".tflite", "")
+        val tokenizer : Tokenizer = when (modelKey) {
+            DISTILBERT_BASE_UNCASED -> WordPieceTokenizer(vocab)
+            TINYBERT_GENERAL_4L_312D -> WordPieceTokenizer(vocab)
+            TINYBERT_GENERAL_6L_768D -> WordPieceTokenizer(vocab)
+            ALBERT_BASE_V2 -> SentencePieceTokenizer(vocab)
+            MOBILEBERT_UNCASED -> WordPieceTokenizer(vocab)
+            else -> throw IllegalArgumentException("Unsupported model: $modelName")
+        }
+
         return TFLiteClassifier(tflite, tokenizer, vocab)
     }
 
@@ -51,12 +71,6 @@ object ModelProvider {
                         val token = line.trim()
                         if (token.isNotEmpty()) mutableVocab[token] = idx
                     }
-            }
-
-            val required = listOf("[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "<", ">")
-            val missing = required.filter { !mutableVocab.containsKey(it) }
-            if (missing.isNotEmpty()) {
-                throw IllegalStateException("vocab.txt is missing required tokens: $missing")
             }
 
             Log.d(TAG, "Vocab loaded: ${mutableVocab.size} tokens")

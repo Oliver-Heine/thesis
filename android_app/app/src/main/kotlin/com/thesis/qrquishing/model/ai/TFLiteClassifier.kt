@@ -3,6 +3,7 @@ package com.thesis.qrquishing.model.ai
 import android.util.Log
 import com.thesis.qrquishing.model.UrlAnalyzer
 import com.thesis.qrquishing.model.dto.Verdict
+import com.thesis.qrquishing.model.tokenizers.Tokenizer
 import org.tensorflow.lite.Interpreter
 import kotlin.math.exp
 
@@ -40,6 +41,7 @@ class TFLiteClassifier(
 
         val inputIds = LongArray(MODEL_SEQUENCE_LENGTH) { padId }
         val attentionMask = LongArray(MODEL_SEQUENCE_LENGTH)
+        val tokenTypeIds = LongArray(MODEL_SEQUENCE_LENGTH)
 
         inputIds[0] = clsId
         attentionMask[0] = 1L
@@ -55,23 +57,42 @@ class TFLiteClassifier(
             attentionMask[sepIndex] = 1L
         }
 
-        return ModelInput(inputIds, attentionMask)
+        return ModelInput(inputIds, attentionMask, tokenTypeIds)
     }
 
     private fun runInference(input: ModelInput): FloatArray {
-        val inputIdsBatch = arrayOf(input.inputIds)
-        val attentionMaskBatch = arrayOf(input.attentionMask)
+        // TFLite runForMultipleInputsOutputs expects an Object[] for inputs
+        val inputs = arrayOfNulls<Any>(tflite.inputTensorCount)
 
-        val inputs = Array(tflite.inputTensorCount) { i ->
-            val name = tflite.getInputTensor(i).name().lowercase()
-            when {
-                "input_ids" in name -> inputIdsBatch
-                "attention_mask" in name -> attentionMaskBatch
-                else -> throw IllegalStateException("Unexpected input tensor: $name")
+        for (i in 0 until tflite.inputTensorCount) {
+            val tensor = tflite.getInputTensor(i)
+            val name = tensor.name().lowercase()
+            val dataType = tensor.dataType()
+
+            // Select the appropriate source data based on tensor name
+            val sourceArray = when {
+                "input_ids" in name -> input.inputIds
+                "attention_mask" in name -> input.attentionMask
+                "token_type_ids" in name -> input.tokenTypeIds
+                else -> throw IllegalArgumentException("Unexpected input tensor: $name")
+            }
+
+            // Map sourceArray (LongArray) to the data type required by the tensor
+            // and wrap it in another array to match the [1, 128] shape (batch size 1)
+            if (dataType == org.tensorflow.lite.DataType.INT64) {
+                // long[][] is compatible with INT64 tensor of shape [1, 128]
+                inputs[i] = arrayOf(sourceArray)
+            } else if (dataType == org.tensorflow.lite.DataType.INT32) {
+                // int[][] is compatible with INT32 tensor of shape [1, 128]
+                val intArray = IntArray(sourceArray.size) { sourceArray[it].toInt() }
+                inputs[i] = arrayOf(intArray)
+            } else {
+                throw IllegalArgumentException("Unsupported tensor type: $dataType for $name")
             }
         }
 
-        val outputBuffer = Array(1) { FloatArray(2) }  // batch=1, 2 classes
+        // Output buffer for logits (2 classes: benign, malicious)
+        val outputBuffer = Array(1) { FloatArray(2) }
         tflite.runForMultipleInputsOutputs(inputs, mapOf(0 to outputBuffer))
 
         return outputBuffer[0]

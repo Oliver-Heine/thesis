@@ -55,7 +55,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupViewModel() {
-        val factory = MainViewModelFactory(ModelProvider.create(this, "none"))
+        val factory = MainViewModelFactory(ModelProvider.create(this, "huawei-noah_TinyBERT_General_6L_768D.tflite"))
         viewModel = ViewModelProvider(this, factory)[MainViewModel::class.java]
     }
 
