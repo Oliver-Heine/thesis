@@ -6,7 +6,7 @@ services:
     image: qr-quishing-detector:latest
     container_name: qr-quishing-backend
     ports:
-      - "8080:8080"
+      - "8080:8082"
     # Run as UID/GID 1000 (non-root)
     user: "1000:1000"
     # Harden the container

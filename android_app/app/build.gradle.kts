@@ -13,8 +13,13 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
 
     buildTypes {
@@ -41,7 +46,6 @@ android {
         viewBinding = true
     }
 
-    // Keep TFLite model files uncompressed for memory-mapped access
     androidResources {
         noCompress += listOf("tflite", "lite")
     }

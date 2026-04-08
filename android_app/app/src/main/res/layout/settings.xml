@@ -8,30 +8,31 @@
     android:background="@color/background"
     tools:context=".MainActivity">
 
+
     <!-- App title bar -->
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="QR Quishing Detector"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:textColor="@android:color/white"
         android:background="@color/colorPrimary"
         android:paddingHorizontal="16dp"
         android:paddingVertical="12dp"
-        app:layout_constraintTop_toTopOf="parent"
+        android:text="QR Quishing Detector"
+        android:textColor="@android:color/white"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintTop_toTopOf="parent" />
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/btnSettings"
+        android:id="@+id/btnSwitchToCam"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="8dp"
-        android:contentDescription="Settings"
+        android:layout_marginEnd="16dp"
+        android:contentDescription="Scan QR Code"
         app:fabSize="mini"
-        app:srcCompat="@drawable/ic_settings_24"
+        app:srcCompat="@drawable/baseline_camera_alt_24"
         app:backgroundTint="@android:color/transparent"
         app:elevation="0dp"
         app:tint="@android:color/white"
@@ -40,63 +41,28 @@
         app:layout_constraintBottom_toBottomOf="@id/tvTitle"
         app:layout_constraintEnd_toEndOf="parent" />
 
+
     <!-- Camera preview placeholder (ZXing manages its own activity, this is a
          visual cue shown on the main screen between scans) -->
-    <androidx.cardview.widget.CardView
-        android:id="@+id/cardPreview"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="16dp"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="4dp"
-        app:layout_constraintTop_toBottomOf="@id/tvTitle"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/btnSwitchToCam"
-        app:layout_constraintHeight_percent="0.45">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@android:color/black">
-
-            <ImageView
-                android:layout_width="80dp"
-                android:layout_height="80dp"
-                android:src="@android:drawable/ic_menu_camera"
-                android:contentDescription="Camera icon"
-                android:alpha="0.4"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Tap 'Scan QR Code' to begin"
-                android:textColor="#99FFFFFF"
-                android:textSize="14sp"
-                android:layout_marginTop="12dp"/>
-        </LinearLayout>
-    </androidx.cardview.widget.CardView>
-
-    <!-- Scan button -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnScan"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Scan QR Code"
-        android:textAllCaps="false"
-        android:paddingHorizontal="32dp"
-        android:paddingVertical="12dp"
-        app:cornerRadius="24dp"
-        app:layout_constraintBottom_toTopOf="@id/cardResult"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginBottom="12dp"/>
+    <!-- Slider for adjusting settings -->
 
     <!-- Result card -->
+
+    <com.google.android.material.slider.Slider
+        android:id="@+id/sliderSensitivity"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:layout_marginTop="16dp"
+        android:stepSize="1.0"
+        android:value="50.0"
+        android:valueFrom="0.0"
+        android:valueTo="100.0"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/confidence" />
+
     <androidx.cardview.widget.CardView
         android:id="@+id/cardResult"
         android:layout_width="0dp"
@@ -215,5 +181,26 @@
             android:textStyle="bold"
             android:textSize="14sp"/>
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/confidence"
+        android:layout_width="178dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="52dp"
+        android:text="Confidence Score Cutoff"
+        app:layout_constraintTop_toBottomOf="@+id/tvTitle"
+        tools:layout_editor_absoluteX="116dp" />
+
+    <TextView
+        android:id="@+id/sliderValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="50"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/sliderSensitivity"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
