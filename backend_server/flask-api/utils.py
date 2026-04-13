@@ -1,5 +1,4 @@
 import logging
-import yaml
 
 logging.basicConfig(
     level=logging.INFO,
@@ -8,7 +7,3 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-def load_config(path: str):
-    with open(path, "r") as f:
-        return yaml.safe_load(f)

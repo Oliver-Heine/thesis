@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from playwright_service import PlaywrightService
 from normalize import bucketize, build_output
+import os
 from utils import logger
 
 app = Flask(__name__)
@@ -41,4 +42,6 @@ def health():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8090, threaded=False)
+    PORT = int(os.getenv("EXPOSE", 8090))
+
+    app.run(host="0.0.0.0", port=PORT, threaded=False)
