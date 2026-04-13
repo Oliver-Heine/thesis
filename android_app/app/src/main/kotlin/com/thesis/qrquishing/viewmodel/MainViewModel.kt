@@ -4,11 +4,12 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.thesis.qrquishing.data.BackendService
+import com.thesis.qrquishing.model.external.BackendService
 import com.thesis.qrquishing.model.ai.TFLiteClassifier
 import com.thesis.qrquishing.model.dto.ModelResult
 import com.thesis.qrquishing.model.dto.Verdict
 import com.thesis.qrquishing.utils.Event
+import com.thesis.qrquishing.utils.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -38,11 +39,12 @@ class MainViewModel(
                 classifier.classify(url)
             }
 
-            if (verdict == Verdict.UNCERTAIN && userAllowedOffDevice) {
-                val result = externalBackendService.validate(url)
+            var modelResult = ModelResult(url, verdict, confidence)
+
+            if (verdict == Verdict.UNCERTAIN && Settings.backendEnabled) {
+                modelResult = externalBackendService.validate(url)
             }
 
-            val modelResult = ModelResult(url, verdict, confidence)
 
             _result.value = modelResult
 

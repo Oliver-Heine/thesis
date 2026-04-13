@@ -3,6 +3,7 @@ package com.thesis.qrquishing.model.ai
 import android.util.Log
 import com.thesis.qrquishing.model.UrlAnalyzer
 import com.thesis.qrquishing.model.dto.Verdict
+import com.thesis.qrquishing.utils.Settings
 import org.tensorflow.lite.Interpreter
 import kotlin.math.exp
 
@@ -13,7 +14,6 @@ class TFLiteClassifier(
 
     companion object {
         private const val TAG = "QRQuishing"
-        private const val CONFIDENCE_THRESHOLD = 0.90f
         private const val MODEL_SEQUENCE_LENGTH = 128
     }
 
@@ -27,7 +27,14 @@ class TFLiteClassifier(
         val input = prepareInput(url)
         val logits = runInference(input)
         val (pBenign, pMalicious) = softmax(logits)
-        decideVerdict(pBenign, pMalicious)
+
+        if (!Settings.backendEnabled) {
+            decideVerdictBackendDisabled(pBenign, pMalicious)
+        } else {
+            decideVerdictThreshold(pBenign, pMalicious)
+        }
+
+        decideVerdictThreshold(pBenign, pMalicious)
 
     } catch (e: Exception) {
         Log.e(TAG, "Inference error", e)
@@ -84,9 +91,14 @@ class TFLiteClassifier(
         return exps[0] / sum to exps[1] / sum
     }
 
-    private fun decideVerdict(pBenign: Float, pMalicious: Float): Pair<Verdict, Float> = when {
-        pMalicious >= CONFIDENCE_THRESHOLD -> Verdict.MALICIOUS to pMalicious
-        pBenign >= CONFIDENCE_THRESHOLD -> Verdict.BENIGN to pBenign
+    private fun decideVerdictThreshold(pBenign: Float, pMalicious: Float): Pair<Verdict, Float> = when {
+        pMalicious >= Settings.CONFIDENCE_THRESHOLD -> Verdict.MALICIOUS to pMalicious
+        pBenign >= Settings.CONFIDENCE_THRESHOLD -> Verdict.BENIGN to pBenign
         else -> Verdict.UNCERTAIN to pMalicious
+    }
+
+    private fun decideVerdictBackendDisabled(pBenign: Float, pMalicious: Float): Pair<Verdict, Float> = when {
+        pMalicious >= pBenign -> Verdict.MALICIOUS to pMalicious
+        else -> Verdict.BENIGN to pBenign
     }
 }

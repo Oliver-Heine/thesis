@@ -19,8 +19,7 @@ modelTransferVenv_tf214/*
 android_app/app/src/main/assets/*
 model_training/*.csv
 *.arrow
-
-
+*.hprof
 
 # ──────────────────────────────
 # Python

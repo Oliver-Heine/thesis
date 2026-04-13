@@ -50,18 +50,45 @@
     <!-- Result card -->
 
     <com.google.android.material.slider.Slider
-        android:id="@+id/sliderSensitivity"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:id="@+id/slider_confidence"
+        android:layout_width="363dp"
+        android:layout_height="48dp"
         android:layout_margin="16dp"
-        android:layout_marginTop="16dp"
-        android:stepSize="1.0"
-        android:value="50.0"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="8dp"
+        android:stepSize="0.05"
+        android:value="0.8"
         android:valueFrom="0.0"
-        android:valueTo="100.0"
+        android:valueTo="1.0"
+        app:layout_constraintBottom_toTopOf="@+id/sliderValue"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/confidence" />
+        app:layout_constraintTop_toBottomOf="@+id/tvTitle" />
+
+    <TextView
+        android:id="@+id/sliderValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="50"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/slider_confidence" />
+
+    <TextView
+        android:id="@+id/confidence"
+        android:layout_width="174dp"
+        android:layout_height="23dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="4dp"
+        android:text="Confidence Score Cutoff"
+        app:layout_constraintBottom_toTopOf="@+id/slider_confidence"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvTitle"
+        app:layout_constraintVertical_bias="1.0" />
 
     <androidx.cardview.widget.CardView
         android:id="@+id/cardResult"
@@ -182,25 +209,13 @@
             android:textSize="14sp"/>
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/confidence"
-        android:layout_width="178dp"
-        android:layout_height="56dp"
-        android:layout_marginTop="52dp"
-        android:text="Confidence Score Cutoff"
-        app:layout_constraintTop_toBottomOf="@+id/tvTitle"
-        tools:layout_editor_absoluteX="116dp" />
-
-    <TextView
-        android:id="@+id/sliderValue"
+    <CheckBox
+        android:id="@+id/backendCheckBox"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="50"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        app:layout_constraintTop_toBottomOf="@id/sliderSensitivity"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        android:layout_marginTop="10dp"
+        android:text="Enable Backend Integration"
+        app:layout_constraintTop_toBottomOf="@+id/sliderValue"
+        tools:layout_editor_absoluteX="24dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

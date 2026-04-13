@@ -32,12 +32,12 @@
         </activity>
 
         <activity
-            android:name=".settingsActivity"
+            android:name=".view.SettingsActivity"
             android:exported="true"
             android:screenOrientation="portrait">
         </activity>
 
-        <activity android:name=".DebugActivity"
+        <activity android:name=".view.DebugActivity"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>

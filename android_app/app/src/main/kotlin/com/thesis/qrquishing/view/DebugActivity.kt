@@ -1,14 +1,12 @@
-package com.thesis.qrquishing
+package com.thesis.qrquishing.view
 
 import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.Intent.getIntent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.view.View
-import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,9 +14,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.google.android.material.slider.Slider
 import com.google.zxing.integration.android.IntentIntegrator
 import com.google.zxing.integration.android.IntentResult
+import com.thesis.qrquishing.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -110,7 +108,7 @@ class DebugActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnScan).setOnClickListener { handleScannedUrl(urlInput.text.toString()) }
 
         settingsButton.setOnClickListener {
-            startActivity(Intent(this, settingsActivity::class.java))
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
     }
 
@@ -265,24 +263,24 @@ class DebugActivity : AppCompatActivity() {
             // WordPiece tokenizer is not needed on-device. Each character
             // maps to its vocab ID; unknown characters map to [UNK].
             val tokens = url.split("").filter { it.isNotEmpty() }.map { vocab[it] ?: unknownId }
-            val ids = IntArray(maxLen) { padId }
-            val mask = IntArray(maxLen) { 0 }
+            val ids = LongArray(maxLen) { padId.toLong() }
+            val mask = LongArray(maxLen) { 0L }
 
-            ids[0] = clsId
-            mask[0] = 1
+            ids[0] = clsId.toLong()
+            mask[0] = 1L
             val contentLen = minOf(tokens.size, maxLen - 2)
             for (i in 0 until contentLen) {
-                ids[i + 1] = tokens[i]
-                mask[i + 1] = 1
+                ids[i + 1] = tokens[i].toLong()
+                mask[i + 1] = 1L
             }
             val endIdx = contentLen + 1
             if (endIdx < maxLen) {
-                ids[endIdx] = sepId
-                mask[endIdx] = 1
+                ids[endIdx] = sepId.toLong()
+                mask[endIdx] = 1L
             }
 
-            val inputIds = Array(1) { ids }
-            val attentionMask = Array(1) { mask }
+            val inputIds = arrayOf(ids)
+            val attentionMask = arrayOf(mask)
             val outputBuffer = Array(1) { FloatArray(2) }
 
             tflite.runForMultipleInputsOutputs(
@@ -298,8 +296,8 @@ class DebugActivity : AppCompatActivity() {
             val pMalicious = expMalicious / sum
 
             val verdict = when {
-                pMalicious >= CONFIDENCE_THRESHOLD -> "MALICIOUS"
-                (1f - pMalicious) >= CONFIDENCE_THRESHOLD -> "BENIGN"
+                pMalicious >= com.thesis.qrquishing.utils.Settings.CONFIDENCE_THRESHOLD -> "MALICIOUS"
+                (1f - pMalicious) >= com.thesis.qrquishing.utils.Settings.CONFIDENCE_THRESHOLD -> "BENIGN"
                 else -> "UNCERTAIN"
             }
             Pair(verdict, pMalicious)

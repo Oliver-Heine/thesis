@@ -1,6 +1,7 @@
 package com.thesis.qrquishing.view
 
 import android.Manifest
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -40,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupListeners() {
         binding.btnScan.setOnClickListener { startScanWithPermissionCheck() }
         binding.executeLocal.setOnClickListener { viewModel.onQrScanned(binding.LocalRunText.text.toString()) }
+        binding.btnSettings.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
     }
 
     private fun setupObservers() {
@@ -81,6 +83,7 @@ class MainActivity : AppCompatActivity() {
         }
         scanLauncher.launch(options)
     }
+
     private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
         result.contents?.takeIf(String::isNotBlank)?.let(viewModel::onQrScanned)
     }

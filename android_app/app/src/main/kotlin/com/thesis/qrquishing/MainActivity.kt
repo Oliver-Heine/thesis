@@ -3,12 +3,10 @@ package com.thesis.qrquishing
 import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.Intent.getIntent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.view.View
-import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,9 +14,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.google.android.material.slider.Slider
 import com.google.zxing.integration.android.IntentIntegrator
 import com.google.zxing.integration.android.IntentResult
+import com.thesis.qrquishing.view.SettingsActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -109,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnScan).setOnClickListener { checkCameraAndScan() }
 
         settingsButton.setOnClickListener {
-            startActivity(Intent(this, settingsActivity::class.java))
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
     }
 

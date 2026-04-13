@@ -1,16 +1,13 @@
-package com.thesis.qrquishing.data
+package com.thesis.qrquishing.model.external
 
 //import com.thesis.qrquishing.view.MainActivity.Companion.BACKEND_URL
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
+import com.thesis.qrquishing.model.dto.ModelResult
+import com.thesis.qrquishing.model.dto.Verdict
 
 class BackendService {
 
-    fun validate(url: String): Boolean {
-        return true
+    fun validate(url: String): ModelResult {
+        return ModelResult("Not setup yet", Verdict.UNCERTAIN, 0.42f)
 //        return try {
 //            val body = JSONObject().put("url", url).toString().toRequestBody("application/json".toMediaType())
 //            val request = Request.Builder().url(BACKEND_URL).post(body).build()
