@@ -14,6 +14,7 @@ RUN apt-get update \
 COPY pom.xml .
 COPY .mvn/ .mvn/
 COPY mvnw .
+COPY /src/main/resources/.env ./.env
 
 # Pre-fetch dependencies (fails gracefully if mvnw is absent — also supports
 # plain `mvn` invocation in CI)
@@ -58,7 +59,7 @@ ENV XDG_CACHE_HOME=/tmp/.cache
 # Drop to non-root
 USER appuser:appgroup
 
-EXPOSE 8080
+EXPOSE 8082
 
 # Tune JVM for container environments
 ENTRYPOINT ["java", \

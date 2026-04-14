@@ -1,9 +1,7 @@
 package com.thesis.qrquishing;
 
-import com.thesis.qrquishing.integrations.ai.AIAnalyzer;
-import com.thesis.qrquishing.integrations.ai.GeminiAnalyzer;
-import com.thesis.qrquishing.integrations.ai.OpenaiAnalyzer;
 import com.thesis.qrquishing.integrations.blacklist.TotalVirus;
+import com.thesis.qrquishing.services.InferenceService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>Input validation (bean-validation + URL sanity checks)</li>
  *   <li>Per-IP rate limiting (10 requests / 60 s, in-memory)</li>
  *   <li>Feature extraction via {@link UrlFeatureExtractor} (Playwright)</li>
- *   <li>LLM analysis via {@link OpenaiAnalyzer} (OpenAI)</li>
+ *   <li>Model inference via {@link InferenceService} (ONNX)</li>
  * </ol>
  */
 @RestController
@@ -37,21 +35,29 @@ public class UrlValidatorController {
     private static final long RATE_WINDOW_MS = 60_000L;
 
     private final UrlFeatureExtractor featureExtractor;
-    private final AIAnalyzer aiAnalyzer;
     private final TotalVirus totalVirus;
+    private final InferenceService inferenceService;
 
     /** Per-IP sliding-window counters: IP → [count, windowStartEpochMs] */
     private final ConcurrentHashMap<String, long[]> rateLimitMap = new ConcurrentHashMap<>();
 
-    public UrlValidatorController(UrlFeatureExtractor featureExtractor, GeminiAnalyzer aiAnalyzer, TotalVirus totalVirus) {
+    public UrlValidatorController(
+            UrlFeatureExtractor featureExtractor,
+            TotalVirus totalVirus,
+            InferenceService inferenceService) {
         this.featureExtractor = featureExtractor;
-        this.aiAnalyzer = aiAnalyzer;
         this.totalVirus = totalVirus;
+        this.inferenceService = inferenceService;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // POST /validate
     // ─────────────────────────────────────────────────────────────────────────
+
+    @GetMapping
+    public ResponseEntity<?> healthCheck() {
+        return ResponseEntity.ok("OK");
+    }
 
     @PostMapping
     public ResponseEntity<?> validate(
@@ -75,8 +81,9 @@ public class UrlValidatorController {
 //        }
 
         try {
+
             UrlFeatures features = featureExtractor.extract(url);
-            ValidationResponse response = aiAnalyzer.analyze(url, features);
+            ValidationResponse response = inferenceService.infer(features);
             log.info("Result for {}: verdict={}, confidence={}", url, response.verdict(), response.confidence());
             return ResponseEntity.ok(response);
 
@@ -89,11 +96,6 @@ public class UrlValidatorController {
             log.error("Feature extraction failed for {}: {}", url, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                     .body(Map.of("error", "Could not retrieve URL features."));
-
-        } catch (OpenaiAnalyzer.LlmException e) {
-            log.error("LLM analysis failed: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(Map.of("error", "Analysis service temporarily unavailable."));
 
         } catch (Exception e) {
             log.error("Unexpected error during validation", e);
