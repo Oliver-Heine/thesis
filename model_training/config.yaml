@@ -1,8 +1,8 @@
 models:
-  - distilbert-base-uncased
   - huawei-noah/TinyBERT_General_4L_312D
-  - huawei-noah/TinyBERT_General_6L_768D
   - albert-base-v2
+  - distilbert-base-uncased
+  - huawei-noah/TinyBERT_General_6L_768D
   - google/mobilebert-uncased
 
 models_backend:
@@ -31,7 +31,7 @@ training_backend:
   warmup_ratio: 0.1
 
 dataset:
-  path: "../top-1m.csv"
+  path: "../datasets/combined_urls_no_duplicated.csv"
   train_split: 0.70
   val_split: 0.15
   test_split: 0.15

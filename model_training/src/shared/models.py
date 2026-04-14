@@ -1,13 +1,24 @@
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 def build_tokenizer(model_name):
-    return AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    SPECIAL_TOKENS = ["<domain>", "<subdomain>", "<path>", "<query>", "<suffix>"]
+    tokenizer.add_tokens(SPECIAL_TOKENS)
+    return tokenizer
 
 def build_model(model_name, num_labels):
     return AutoModelForSequenceClassification.from_pretrained(
         model_name,
         num_labels=num_labels
     )
+
+def load_pretrained_model_from_disk(model_key, fold, device):
+    trained_model_path = f"output/{model_key}/fold_{fold}"
+
+    trained_model = AutoModelForSequenceClassification.from_pretrained(trained_model_path)
+    trained_model.to(device)
+    trained_model.eval()
+    return trained_model
 
 
 def build_tokenizer_backend(model_name):

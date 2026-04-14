@@ -1,12 +1,11 @@
 import argparse
 from datasets import Dataset, DatasetDict, ClassLabel, load_from_disk
-from utils import logger
+from shared.utils import logger, load_config
 import pandas as pd
 import os
 import re
 import tldextract
 from urllib.parse import urlparse
-from utils import load_config
 
 
 def normalize_url(url: str):
@@ -47,6 +46,11 @@ def normalize_url(url: str):
         tokens.extend(re.split(r"[=&]", parsed.query))
 
     return " ".join([t for t in tokens if t])
+
+def load_raw_dataset(dataset_config):
+    logger.info(f"Loading dataset: {dataset_config['path']}")
+    dataframe = pd.read_csv(dataset_config["path"])
+    return dataframe
 
 def load_dataset_from_config(dataset_config):
 
