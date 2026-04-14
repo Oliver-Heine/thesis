@@ -3,12 +3,13 @@ from playwright_service import PlaywrightService
 from normalize import bucketize, build_output
 import os
 from utils import logger
+from inference import predict, load_model
 
 app = Flask(__name__)
 
 playwright_service = PlaywrightService()
 playwright_service.start()   # no asyncio anymore
-
+tokenizer, model = load_model()
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -26,9 +27,14 @@ def analyze():
         logger.info("Formatting output")
         formatted = build_output(url, features)
 
+        prediction, conf = predict(formatted, tokenizer, model)
+        label = "MALICIOUS" if prediction == 1 else "BENIGN"
+
         return jsonify({
             "url": url,
-            "formatted_result": formatted
+            "formatted_result": formatted,
+            "prediction": label,
+            "confidence": round(conf, 4)
         })
 
     except Exception as e:
