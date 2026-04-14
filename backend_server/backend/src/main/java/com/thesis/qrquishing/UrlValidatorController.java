@@ -4,6 +4,7 @@ import com.thesis.qrquishing.integrations.ai.AIAnalyzer;
 import com.thesis.qrquishing.integrations.ai.GeminiAnalyzer;
 import com.thesis.qrquishing.integrations.ai.OpenaiAnalyzer;
 import com.thesis.qrquishing.integrations.blacklist.TotalVirus;
+import com.thesis.qrquishing.services.InferenceService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,19 +40,29 @@ public class UrlValidatorController {
     private final UrlFeatureExtractor featureExtractor;
     private final AIAnalyzer aiAnalyzer;
     private final TotalVirus totalVirus;
+    //private final InferenceService inferenceService;
 
     /** Per-IP sliding-window counters: IP → [count, windowStartEpochMs] */
     private final ConcurrentHashMap<String, long[]> rateLimitMap = new ConcurrentHashMap<>();
 
-    public UrlValidatorController(UrlFeatureExtractor featureExtractor, GeminiAnalyzer aiAnalyzer, TotalVirus totalVirus) {
+    public UrlValidatorController(
+            UrlFeatureExtractor featureExtractor,
+            GeminiAnalyzer aiAnalyzer,
+            TotalVirus totalVirus) {
         this.featureExtractor = featureExtractor;
         this.aiAnalyzer = aiAnalyzer;
         this.totalVirus = totalVirus;
+        //this.inferenceService = inferenceService;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // POST /validate
     // ─────────────────────────────────────────────────────────────────────────
+
+    @GetMapping
+    public ResponseEntity<?> healthCheck() {
+        return ResponseEntity.ok("OK");
+    }
 
     @PostMapping
     public ResponseEntity<?> validate(
@@ -75,6 +86,8 @@ public class UrlValidatorController {
 //        }
 
         try {
+
+
             UrlFeatures features = featureExtractor.extract(url);
             ValidationResponse response = aiAnalyzer.analyze(url, features);
             log.info("Result for {}: verdict={}, confidence={}", url, response.verdict(), response.confidence());

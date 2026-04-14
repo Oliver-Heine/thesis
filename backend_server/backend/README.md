@@ -38,7 +38,7 @@ cd backend_server
 mvn spring-boot:run
 ```
 
-The server starts on **http://localhost:8080**.
+The server starts on **http://localhost:8082**.
 
 ### 3. Run tests
 
