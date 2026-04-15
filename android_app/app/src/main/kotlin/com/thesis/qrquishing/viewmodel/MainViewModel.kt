@@ -6,7 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thesis.qrquishing.model.external.BackendService
 import com.thesis.qrquishing.model.ai.TFLiteClassifier
-import com.thesis.qrquishing.model.dto.ModelResult
+import com.thesis.qrquishing.model.dto.LocalResult
+import com.thesis.qrquishing.model.dto.ModelResults
 import com.thesis.qrquishing.model.dto.Verdict
 import com.thesis.qrquishing.utils.Event
 import com.thesis.qrquishing.utils.Settings
@@ -18,11 +19,11 @@ class MainViewModel(
     private val classifier: TFLiteClassifier
 ) : ViewModel() {
 
-    private val _result = MutableLiveData<ModelResult>()
-    val result: LiveData<ModelResult> = _result
+    private val _result = MutableLiveData<ModelResults>()
+    val result: LiveData<ModelResults> = _result
 
-    private val _warningEvent = MutableLiveData<Event<ModelResult>>()
-    val warningEvent: LiveData<Event<ModelResult>> = _warningEvent
+    private val _warningEvent = MutableLiveData<Event<ModelResults>>()
+    val warningEvent: LiveData<Event<ModelResults>> = _warningEvent
     val userAllowedOffDevice: Boolean = true
     val externalBackendService: BackendService = BackendService()
 
@@ -39,18 +40,16 @@ class MainViewModel(
                 classifier.classify(url)
             }
 
-            var modelResult = ModelResult(url, verdict, confidence)
+            var modelResults = ModelResults()
 
-            if (verdict == Verdict.UNCERTAIN && Settings.backendEnabled) {
-                modelResult = externalBackendService.validate(url)
+            modelResults = modelResults.copy(localResult = LocalResult(url, verdict, confidence))
+
+            if (Settings.ALWAYS_USE_BACKEND ||
+                (verdict == Verdict.UNCERTAIN && Settings.backendEnabled)) {
+                modelResults = modelResults.copy(
+                    backendResult = withContext(Dispatchers.IO) {externalBackendService.validate(url)})
             }
-
-
-            _result.value = modelResult
-
-            if (verdict.shouldWarn()) {
-                _warningEvent.value = Event(modelResult)
-            }
+            _result.value = modelResults
         }
     }
 }

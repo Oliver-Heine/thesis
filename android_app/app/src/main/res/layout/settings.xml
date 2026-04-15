@@ -10,6 +10,26 @@
 
 
     <!-- App title bar -->
+
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/urlSourceText"
+        android:layout_width="343dp"
+        android:layout_height="42dp"
+        android:layout_marginStart="24dp"
+        android:hint="hint"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/urlSource" />
+
+    <TextView
+        android:id="@+id/urlSource"
+        android:layout_width="174dp"
+        android:layout_height="23dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="8dp"
+        android:text="URL Source"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/backendCheckBox" />
+
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="0dp"
@@ -213,9 +233,19 @@
         android:id="@+id/backendCheckBox"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginStart="24dp"
         android:text="Enable Backend Integration"
-        app:layout_constraintTop_toBottomOf="@+id/sliderValue"
-        tools:layout_editor_absoluteX="24dp" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/backendAlwaysCheckBox" />
+
+    <CheckBox
+        android:id="@+id/backendAlwaysCheckBox"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="10dp"
+        android:text="Always use Backend Integration"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/sliderValue" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

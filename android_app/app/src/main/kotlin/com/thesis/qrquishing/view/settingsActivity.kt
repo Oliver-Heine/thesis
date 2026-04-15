@@ -2,9 +2,7 @@ package com.thesis.qrquishing.view
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.google.android.material.slider.Slider
-import com.thesis.qrquishing.R
+import androidx.core.widget.addTextChangedListener
 import com.thesis.qrquishing.databinding.SettingsBinding
 import com.thesis.qrquishing.utils.Settings
 import com.thesis.qrquishing.utils.SettingsUiHelper
@@ -39,6 +37,15 @@ class SettingsActivity : AppCompatActivity()  {
         binding.backendCheckBox.setOnCheckedChangeListener { _, isChecked ->
             Settings.backendEnabled = isChecked
         }
+
+        binding.backendAlwaysCheckBox.setOnCheckedChangeListener { _, isChecked ->
+            Settings.ALWAYS_USE_BACKEND = isChecked
+        }
+
+        binding.urlSourceText.addTextChangedListener {
+            Settings.BACKEND_URL = binding.urlSourceText.text.toString()
+        }
+
 
         binding.sliderConfidence.addOnChangeListener { _, value, _ ->
             uiHelper.updateConfidenceCutoff(value)

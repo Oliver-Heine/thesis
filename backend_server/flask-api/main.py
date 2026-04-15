@@ -32,7 +32,6 @@ def analyze():
 
         return jsonify({
             "url": url,
-            "formatted_result": formatted,
             "prediction": label,
             "confidence": round(conf, 4)
         })

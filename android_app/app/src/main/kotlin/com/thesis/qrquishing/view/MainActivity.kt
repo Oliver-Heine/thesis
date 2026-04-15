@@ -46,12 +46,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupObservers() {
         viewModel.result.observe(this) { result ->
-            uiHelper.updateResult(result.url, result.verdict, result.confidence)
+            uiHelper.updateResult(result)
         }
 
         viewModel.warningEvent.observe(this) { event ->
             event.getContentIfNotHandled()?.let { result ->
-                uiHelper.showWarningDialog(result.url, result.verdict, result.confidence)
+                uiHelper.showWarningDialog(result)
             }
         }
     }
