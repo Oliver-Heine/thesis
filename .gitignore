@@ -18,8 +18,13 @@ modelTransferVenv_py313_backup/*
 modelTransferVenv_tf214/*
 android_app/app/src/main/assets/*
 model_training/*.csv
+model_training/src/output/*
 *.arrow
 *.hprof
+*.onnx*
+*.onnx.data
+backend_server/backend/src/main/resources/models/*
+
 
 # ──────────────────────────────
 # Python

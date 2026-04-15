@@ -1,34 +1,9 @@
 services:
-  backend:
+  flask-api:
     build:
-      context: .
+      context: ./flask-api
       dockerfile: Dockerfile
-    image: qr-quishing-detector:latest
-    container_name: qr-quishing-backend
+    container_name: flask-api
     ports:
-      - "8080:8082"
-    # Run as UID/GID 1000 (non-root)
-    user: "1000:1000"
-    # Harden the container
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      # Spring Boot and Playwright need writable temp space
-      - /tmp:size=256m,mode=1777
-    # API keys from a .env file (never committed)
-    env_file:
-      - .env
-    environment:
-      # These can also be set directly for CI/CD pipelines
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      VT_API_KEY: ${VT_API_KEY}
+      - "8090:8090"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
