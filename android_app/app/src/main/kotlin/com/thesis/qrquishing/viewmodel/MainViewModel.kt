@@ -22,6 +22,9 @@ class MainViewModel(
     val result: LiveData<ModelResult> = _result
 
     private val _warningEvent = MutableLiveData<Event<ModelResult>>()
+    private val _openUrlEvent = MutableLiveData<Event<String>>()
+
+    val openUrlEvent: LiveData<Event<String>> = _openUrlEvent
     val warningEvent: LiveData<Event<ModelResult>> = _warningEvent
     val userAllowedOffDevice: Boolean = true
     val externalBackendService: BackendService = BackendService()
@@ -44,12 +47,12 @@ class MainViewModel(
             if (verdict == Verdict.UNCERTAIN && Settings.backendEnabled) {
                 modelResult = externalBackendService.validate(url)
             }
-
-
             _result.value = modelResult
 
             if (verdict.shouldWarn()) {
                 _warningEvent.value = Event(modelResult)
+            } else {
+                _openUrlEvent.value = Event(modelResult.url)
             }
         }
     }

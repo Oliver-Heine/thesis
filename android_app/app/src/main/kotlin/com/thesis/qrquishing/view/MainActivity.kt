@@ -2,7 +2,9 @@ package com.thesis.qrquishing.view
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
@@ -14,6 +16,7 @@ import com.thesis.qrquishing.model.permission.PermissionValidator.hasCameraPermi
 import com.thesis.qrquishing.utils.UiHelper
 import com.thesis.qrquishing.viewmodel.MainViewModel
 import com.thesis.qrquishing.viewmodel.MainViewModelFactory
+import androidx.core.net.toUri
 
 /**
  * Main activity: handles all UI interactions.
@@ -54,6 +57,12 @@ class MainActivity : AppCompatActivity() {
                 uiHelper.showWarningDialog(result.url, result.verdict, result.confidence)
             }
         }
+
+        viewModel.openUrlEvent.observe(this) { event ->
+            event.getContentIfNotHandled()?.let { url ->
+                openInBrowser(url)
+            }
+        }
     }
 
     private fun setupViewModel() {
@@ -82,6 +91,17 @@ class MainActivity : AppCompatActivity() {
             setPrompt("Scan a QR code")
         }
         scanLauncher.launch(options)
+    }
+
+    private fun openInBrowser(url: String) {
+        var uri = url.toUri()
+
+        if (uri.scheme != "http" && uri.scheme != "https") {
+            uri = ("https://" + uri).toUri()
+        }
+
+        val intent = Intent(Intent.ACTION_VIEW, uri)
+        startActivity(intent)
     }
 
     private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
