@@ -42,7 +42,7 @@ dataset_backend:
   val_split: 0.15
   test_split: 0.15
 
-hf_token: "very_secrete_token"
+hf_token: "very_very_secrete_token"
 hf_username: "OliverHeine/"
 hf_train_version: "_train_v2"
 hf_backend_train_version: "_train_v1"

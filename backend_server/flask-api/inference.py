@@ -10,7 +10,7 @@ def load_model(config_path="./config.yaml"):
     config = load_config(config_path)
     logger.info(f"Logging into huggingface")
     login(token=config["hf_token"])
-    model_name = config["hf_username"] + config["models_backend"][2] + config["hf_backend_train_version"]  # or local path
+    model_name = config["hf_username"] + config["models_backend"][0] + config["hf_backend_train_version"]  # or local path
 
     logger.info(f"Loading model {model_name}")
 
