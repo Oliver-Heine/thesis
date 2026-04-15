@@ -1,85 +1,207 @@
 import argparse
 from datasets import Dataset, DatasetDict, ClassLabel, load_from_disk
-from utils import logger
+from shared.utils import logger
 import pandas as pd
+import numpy as np
 import os
-from utils import load_config
+from shared.utils import load_config
+import re
+from urllib.parse import urlparse
+import tldextract
 
 
 # ---------------------------
-# Feature Engineering (TEXT)
+# Feature Definitions
 # ---------------------------
 
-def bucket_page_size(value):
-    if value < 50:
-        return "<PAGE_SIZE_SMALL>"
-    elif value < 150:
-        return "<PAGE_SIZE_MEDIUM>"
-    elif value < 300:
-        return "<PAGE_SIZE_LARGE>"
-    else:
-        return "<PAGE_SIZE_XL>"
+SPECIAL_TOKENS = ["<DOMAIN>", "<SUBDOMAIN>", "<PATH>", "<QUERY>", "<SUFFIX>"]
 
+NUMERICAL_FEATURES = [
+    "redirect_count",
+    "server_redirect_count",
+    "third_party_domains",
+    "num_inputs",
+    "num_iframes",
+    "external_scripts",
+    "page_size",
+]
 
-def bucket_tld_entropy(value):
-    if value < 1.2:
-        return "<TLD_ENTROPY_LOW>"
-    elif value < 1.8:
-        return "<TLD_ENTROPY_MEDIUM>"
-    else:
-        return "<TLD_ENTROPY_HIGH>"
+NUMERICAL_BINS = {
+    "redirect_count": [0, 1, 2, 3, 4, 5, 6, 7, 8, "MAX"],
+    "server_redirect_count": [0, 1, 2, 3, 4, 5, 6, 7, 8, "MAX"],
+    "third_party_domains": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, "MAX"],
+    "num_inputs": [0, 1, 2, 3, 4, 5, 10, 15, 20, "MAX"],
+    "num_iframes": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, "MAX"],
+    "external_scripts": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, "MAX"],
+    "page_size": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 15.0, 20.0, "MAX"]
+}
 
+BOOLEAN_FEATURES = [
+    "login_form",
+    "password_input",
+    "uses_eval",
+    "canvas_fingerprint",
+    "cert_valid"
+]
 
-def bucket_count(value, name):
-    if value == 0:
-        return f"<{name}_0>"
-    elif value == 1:
-        return f"<{name}_1>"
-    elif value <= 3:
-        return f"<{name}_2_3>"
-    elif value <= 7:
-        return f"<{name}_4_7>"
-    elif value <= 15:
-        return f"<{name}_8_15>"
-    else:
-        return f"<{name}_16_PLUS>"
+def analyze_numeric_features(df, numeric_features=NUMERICAL_FEATURES, output_csv="data/numeric_distribution.txt"):
+    """
+    Prints and optionally saves the distribution of numeric features.
 
+    Args:
+        df (pd.DataFrame): The dataset dataframe.
+        numeric_features (list[str]): List of numeric column names to analyze.
+        output_csv (str, optional): Path to save the distributions as CSV.
+    """
+    distributions = {}
 
-def row_to_text(row):
+    for feature in numeric_features:
+        counts = df[feature].value_counts(dropna=False).sort_index()
+        distributions[feature] = counts
+        print(f"\nFeature: {feature}")
+        print(counts)
+
+    if output_csv:
+        # Combine all distributions into one CSV
+        with pd.ExcelWriter(output_csv) if output_csv.endswith(".xlsx") else open(output_csv, "w") as f:
+            for feature, counts in distributions.items():
+                f.write(f"Feature: {feature}\n")
+                counts.to_csv(f, header=["count"])
+                f.write("\n")
+        print(f"\nSaved numeric distributions to {output_csv}")
+
+def normalize_url(url: str):
+    url = url.lower().strip()
+
+    # remove protocol and www for normalization
+    url_clean = re.sub(r"^https?://", "", url)
+    url_clean = re.sub(r"^www\.", "", url_clean)
+
+    # Ensure urlparse sees a scheme, otherwise domain may be misparsed
+    parsed = urlparse("http://" + url_clean)
+    ext = tldextract.extract(url_clean)
+
     tokens = []
 
-    # Domain (raw)
-    tokens.append(f"<DOMAIN> {row['domain']}")
+    # subdomain
+    if ext.subdomain:
+        tokens.append("<subdomain>")
+        tokens.extend(ext.subdomain.split("."))
 
-    # Count-based features
-    tokens.append(bucket_count(int(row["redirect_count"]), "REDIRECT_COUNT"))
-    tokens.append(bucket_count(int(row["third_party_domains"]), "THIRD_PARTY_DOMAINS"))
-    tokens.append(bucket_count(int(row["num_inputs"]), "NUM_INPUTS"))
-    tokens.append(bucket_count(int(row["num_iframes"]), "NUM_IFRAMES"))
-    tokens.append(bucket_count(int(row["external_scripts"]), "EXTERNAL_SCRIPTS"))
+    # domain
+    tokens.append("<domain>")
+    tokens.append(ext.domain)
 
+    # domain extension
+    tokens.append("<suffix>")
+    tokens.extend(ext.suffix.split("."))
+
+    # path
+    if parsed.path and parsed.path != "/":
+        tokens.append("<path>")
+        tokens.extend(re.split(r"[/\-_.?=&]", parsed.path))
+
+    # query
+    if parsed.query:
+        tokens.append("<query>")
+        tokens.extend(re.split(r"[=&]", parsed.query))
+
+    return " ".join([t for t in tokens if t])
+
+# ---------------------------
+# Vectorized Transformation
+# ---------------------------
+
+def prepare_bins(df, template=NUMERICAL_BINS, special_tokens=SPECIAL_TOKENS):
+    """
+    Returns the numeric bins for each feature.
+    Optionally, extends special_tokens with <FEATURE_BUCKET> tokens for all buckets.
+    """
+    bins = {}
+    if special_tokens is None:
+        special_tokens = []
+
+    for feature, edges in template.items():
+        new_edges = []
+        for e in edges:
+            if e == "MAX":
+                max_val = df[feature].max()
+                new_edges.append(max_val + 1)
+            else:
+                new_edges.append(e)
+        bins[feature] = new_edges
+
+        # Add tokens for all buckets
+        n_buckets = len(new_edges) - 1
+        for i in range(n_buckets):
+            special_tokens.append(f"<{feature.upper()}_{i}>")
+        special_tokens.append(f"<{feature.upper()}_MISSING>")  # missing value token
+
+    return bins, special_tokens
+
+
+def transform_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    # ---------------------------
+    # Prepare numeric bins and extend SPECIAL_TOKENS
+    # ---------------------------
+    bins_formatted, SPECIAL_TOKENS = prepare_bins(df)
+
+    # ---------------------------
+    # Numerical features
+    # ---------------------------
+    for feature in NUMERICAL_FEATURES:
+        values = df[feature].astype(float)
+        mask_nan = values.isna()
+        non_nan_values = values[~mask_nan]
+
+        bucket_indices = pd.cut(
+            non_nan_values,
+            bins=bins_formatted[feature],
+            labels=False,
+            include_lowest=True
+        )
+
+        tokens = [f"<{feature.upper()}_{b}>" for b in bucket_indices]
+
+        full_tokens = []
+        idx = 0
+        for is_nan in mask_nan:
+            if is_nan:
+                full_tokens.append(f"<{feature.upper()}_MISSING>")
+            else:
+                full_tokens.append(tokens[idx])
+                idx += 1
+
+        df[feature + "_token"] = full_tokens
+
+    # ---------------------------
     # Boolean features
-    tokens.append("<LOGIN_FORM_YES>" if row["login_form"] == 1 else "<LOGIN_FORM_NO>")
-    tokens.append("<PASSWORD_INPUT_YES>" if row["password_input"] == 1 else "<PASSWORD_INPUT_NO>")
-    tokens.append("<USES_EVAL_YES>" if row["uses_eval"] == 1 else "<USES_EVAL_NO>")
-    tokens.append("<POPUP_YES>" if row["popup_window"] == 1 else "<POPUP_NO>")
-    tokens.append("<DOC_LOC_CHANGE_YES>" if row["document_location_change"] == 1 else "<DOC_LOC_CHANGE_NO>")
-    tokens.append("<CANVAS_FP_YES>" if row["canvas_fingerprint"] == 1 else "<CANVAS_FP_NO>")
+    # ---------------------------
+    for feature in BOOLEAN_FEATURES:
+        yes_token = f"<{feature.upper()}_YES>"
+        no_token = f"<{feature.upper()}_NO>"
 
-    # Continuous features (bucketed)
-    tokens.append(bucket_page_size(float(row["page_size"])))
-    tokens.append(bucket_tld_entropy(float(row["tld_entropy"])))
+        # Add boolean tokens only if not already present
+        if yes_token not in SPECIAL_TOKENS:
+            SPECIAL_TOKENS.append(yes_token)
+        if no_token not in SPECIAL_TOKENS:
+            SPECIAL_TOKENS.append(no_token)
 
-    # Cert
-    tokens.append("<CERT_VALID_YES>" if row["cert_valid"] == 1 else "<CERT_VALID_NO>")
+        df[feature + "_token"] = np.where(
+            df[feature] == 1,
+            yes_token,
+            no_token
+        )
 
-    # Domain age
-    if int(row["domain_age"]) == -1:
-        tokens.append("<DOMAIN_AGE_UNKNOWN>")
-    else:
-        tokens.append(bucket_count(int(row["domain_age"]), "DOMAIN_AGE"))
+    # ---------------------------
+    # Combine all tokens into a single text column
+    # ---------------------------
+    token_columns = [f"{f}_token" for f in NUMERICAL_FEATURES + BOOLEAN_FEATURES]
+    df["text"] = df["domain"].apply(normalize_url) + " " + df[token_columns].agg(" ".join, axis=1)
 
-    return " ".join(tokens)
+    return df[["text", "label"]]
 
 
 # ---------------------------
@@ -96,11 +218,10 @@ def load_dataset_from_config(dataset_config):
 
     dataframe = pd.read_csv(dataset_config["path"])
 
-    # Convert to text representation
-    logger.info("Transforming rows into text representation...")
-    dataframe["text"] = dataframe.apply(row_to_text, axis=1)
-
-    dataframe = dataframe[["text", "label"]]
+    # Transform dataset (FAST)
+    logger.info("Transforming dataset (vectorized)...")
+    dataframe = transform_dataframe(dataframe)
+    logger.info("Transformation complete.")
 
     dataset = Dataset.from_pandas(dataframe)
 
@@ -183,7 +304,7 @@ def tokenize_dataset(dataset, tokenizer, max_length):
 
 
 # ---------------------------
-# CLI (optional utility)
+# CLI
 # ---------------------------
 
 if __name__ == "__main__":

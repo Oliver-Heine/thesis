@@ -37,7 +37,7 @@ dataset:
   test_split: 0.15
 
 dataset_backend:
-  path: "../backend_training.csv"
+  path: "../datasets/backend_training.csv"
   train_split: 0.70
   val_split: 0.15
   test_split: 0.15
