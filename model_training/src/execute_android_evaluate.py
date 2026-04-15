@@ -110,11 +110,11 @@ def save_summary_metrics(config):
             ])
 
 def save_metrics(model_name, accuracy, precision, recall, f1, specificity,
-                 auc, avg_precision, tp, tn, fp, fn, hf_train_version, fold):
+                 auc, avg_precision, tp, tn, fp, fn, fold):
 
     safe_model_name = model_name.replace("/", "_")
 
-    path = f"../evaluation_results/{hf_train_version}/{safe_model_name}_fold_{fold}_metrics.txt"
+    path = f"../evaluation_results/{safe_model_name}/fold_{fold}_metrics.txt"
 
     with open(path, "w") as f:
 
@@ -134,7 +134,7 @@ def save_metrics(model_name, accuracy, precision, recall, f1, specificity,
         f.write(f"FP: {fp}\n")
         f.write(f"FN: {fn}\n")
 
-def evaluate(model, tokenizer, dataset, device, model_name, hf_train_version, fold):
+def evaluate(model, tokenizer, dataset, device, model_name, fold):
     texts = dataset["url"]
     labels = np.array(dataset["result"])
 
@@ -178,13 +178,12 @@ def evaluate(model, tokenizer, dataset, device, model_name, hf_train_version, fo
         tn,
         fp,
         fn,
-        hf_train_version,
         fold
     )
 
     return labels, preds, probs, accuracy, precision, recall, f1, specificity, auc, avg_precision, tp, tn, fp, fn
 
-def plot_confusion(labels, preds, model_name, hf_train_version, fold):
+def plot_confusion(labels, preds, model_name, fold):
 
     cm = confusion_matrix(labels, preds)
 
@@ -203,14 +202,14 @@ def plot_confusion(labels, preds, model_name, hf_train_version, fold):
     plt.title("Confusion Matrix")
 
     # clean model name for filename
-    safe_model_name = f"{model_name.replace('/', '_')}_fold_{fold}"
+    safe_model_name = f"{model_name.replace('/', '_')}"
 
-    path = f"../evaluation_results/{hf_train_version}/ConfusionMatrix/{safe_model_name}_confusion_matrix.png"
+    path = f"../evaluation_results/{safe_model_name}/ConfusionMatrix/fold_{fold}_confusion_matrix.png"
 
     plt.savefig(path, bbox_inches="tight")
     plt.close()
 
-def plot_roc(labels, probs, model_name, hf_train_version, fold):
+def plot_roc(labels, probs, model_name, fold):
 
     fpr, tpr, _ = roc_curve(labels, probs)
     auc = roc_auc_score(labels, probs)
@@ -226,15 +225,15 @@ def plot_roc(labels, probs, model_name, hf_train_version, fold):
     plt.legend()
 
     # clean model name for filename
-    safe_model_name = f"{model_name.replace('/', '_')}_fold_{fold}"
+    safe_model_name = f"{model_name.replace('/', '_')}"
 
-    path = f"../evaluation_results/{hf_train_version}/ROC/{safe_model_name}_roc.png"
+    path = f"../evaluation_results/{safe_model_name}/ROC/fold_{fold}_roc.png"
 
     plt.savefig(path, bbox_inches="tight")
     plt.close()
 
 
-def plot_precision_recall(labels, probs, model_name, hf_train_version, fold):
+def plot_precision_recall(labels, probs, model_name, fold):
 
     precision, recall, _ = precision_recall_curve(labels, probs)
     ap = average_precision_score(labels, probs)
@@ -249,9 +248,9 @@ def plot_precision_recall(labels, probs, model_name, hf_train_version, fold):
     plt.legend()
 
     # clean model name for filename
-    safe_model_name = f"{model_name.replace('/', '_')}_fold_{fold}"
+    safe_model_name = f"{model_name.replace('/', '_')}"
 
-    path = f"../evaluation_results/{hf_train_version}/Precision-recall/{safe_model_name}_Precision-Recall.png"
+    path = f"../evaluation_results/{safe_model_name}/Precision-recall/fold_{fold}_Precision-Recall.png"
 
     plt.savefig(path, bbox_inches="tight")
     plt.close()
