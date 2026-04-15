@@ -4,7 +4,7 @@ import torch
 
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from datasets import load_from_disk
-from utils import logging
+from shared.utils import logging, load_config
 from tqdm import tqdm
 from sklearn.metrics import (
     confusion_matrix,
@@ -22,8 +22,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import csv
-
-from utils import load_config
 
 def get_device():
     if torch.cuda.is_available():
@@ -112,11 +110,11 @@ def save_summary_metrics(config):
             ])
 
 def save_metrics(model_name, accuracy, precision, recall, f1, specificity,
-                 auc, avg_precision, tp, tn, fp, fn, hf_train_version):
+                 auc, avg_precision, tp, tn, fp, fn, hf_train_version, fold):
 
     safe_model_name = model_name.replace("/", "_")
 
-    path = f"../evaluation_results/{hf_train_version}/{safe_model_name}_metrics.txt"
+    path = f"../evaluation_results/{hf_train_version}/{safe_model_name}_fold_{fold}_metrics.txt"
 
     with open(path, "w") as f:
 
@@ -136,7 +134,7 @@ def save_metrics(model_name, accuracy, precision, recall, f1, specificity,
         f.write(f"FP: {fp}\n")
         f.write(f"FN: {fn}\n")
 
-def evaluate(model, tokenizer, dataset, device, model_name, hf_train_version):
+def evaluate(model, tokenizer, dataset, device, model_name, hf_train_version, fold):
     texts = dataset["url"]
     labels = np.array(dataset["result"])
 
@@ -180,12 +178,13 @@ def evaluate(model, tokenizer, dataset, device, model_name, hf_train_version):
         tn,
         fp,
         fn,
-        hf_train_version
+        hf_train_version,
+        fold
     )
 
-    return labels, preds, probs
+    return labels, preds, probs, accuracy, precision, recall, f1, specificity, auc, avg_precision, tp, tn, fp, fn
 
-def plot_confusion(labels, preds, model_name, hf_train_version):
+def plot_confusion(labels, preds, model_name, hf_train_version, fold):
 
     cm = confusion_matrix(labels, preds)
 
@@ -204,14 +203,14 @@ def plot_confusion(labels, preds, model_name, hf_train_version):
     plt.title("Confusion Matrix")
 
     # clean model name for filename
-    safe_model_name = model_name.replace("/", "_")
+    safe_model_name = f"{model_name.replace('/', '_')}_fold_{fold}"
 
     path = f"../evaluation_results/{hf_train_version}/ConfusionMatrix/{safe_model_name}_confusion_matrix.png"
 
     plt.savefig(path, bbox_inches="tight")
     plt.close()
 
-def plot_roc(labels, probs, model_name, hf_train_version):
+def plot_roc(labels, probs, model_name, hf_train_version, fold):
 
     fpr, tpr, _ = roc_curve(labels, probs)
     auc = roc_auc_score(labels, probs)
@@ -227,7 +226,7 @@ def plot_roc(labels, probs, model_name, hf_train_version):
     plt.legend()
 
     # clean model name for filename
-    safe_model_name = model_name.replace("/", "_")
+    safe_model_name = f"{model_name.replace('/', '_')}_fold_{fold}"
 
     path = f"../evaluation_results/{hf_train_version}/ROC/{safe_model_name}_roc.png"
 
@@ -235,7 +234,7 @@ def plot_roc(labels, probs, model_name, hf_train_version):
     plt.close()
 
 
-def plot_precision_recall(labels, probs, model_name, hf_train_version):
+def plot_precision_recall(labels, probs, model_name, hf_train_version, fold):
 
     precision, recall, _ = precision_recall_curve(labels, probs)
     ap = average_precision_score(labels, probs)
@@ -250,14 +249,14 @@ def plot_precision_recall(labels, probs, model_name, hf_train_version):
     plt.legend()
 
     # clean model name for filename
-    safe_model_name = model_name.replace("/", "_")
+    safe_model_name = f"{model_name.replace('/', '_')}_fold_{fold}"
 
     path = f"../evaluation_results/{hf_train_version}/Precision-recall/{safe_model_name}_Precision-Recall.png"
 
     plt.savefig(path, bbox_inches="tight")
     plt.close()
 
-def main(config_path):
+def main(config_path, fold):
     config = load_config(config_path)
     hf_train_version = config["hf_train_version"]
 
@@ -286,9 +285,9 @@ def main(config_path):
 
         labels, preds, probs = evaluate(model, tokenizer, test_dataset, device, model_name, hf_train_version)
 
-        plot_confusion(labels, preds, model_name, hf_train_version)
-        plot_roc(labels, probs, model_name, hf_train_version)
-        plot_precision_recall(labels, probs, model_name, hf_train_version)
+        plot_confusion(labels, preds, model_name, hf_train_version, fold)
+        plot_roc(labels, probs, model_name, hf_train_version, fold)
+        plot_precision_recall(labels, probs, model_name, hf_train_version, fold)
 
     save_summary_metrics(config)
 

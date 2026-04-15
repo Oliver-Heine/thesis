@@ -4,7 +4,7 @@ from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
 
-def train(model, tokenized_dataset, tokenizer, training_config, model_name, train_version, output_dir="fine-tuned-models"):
+def train(model, tokenized_dataset, tokenizer, training_config, model_name, output_dir="fine-tuned-models"):
     # Data collator to dynamically pad sequences
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
@@ -22,7 +22,7 @@ def train(model, tokenized_dataset, tokenizer, training_config, model_name, trai
         save_total_limit=2,
         seed=training_config.get("seed", 42),
         push_to_hub=True,
-        hub_model_id="OliverHeine/" + model_name + train_version
+        hub_model_id="OliverHeine/" + model_name
     )
 
     # transformers>=5 uses `eval_strategy`, older versions use `evaluation_strategy`
