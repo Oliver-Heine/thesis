@@ -12,6 +12,9 @@ def train(model, tokenized_dataset, tokenizer, training_config, model_name, outp
     training_args_kwargs = dict(
         output_dir=output_dir,
         save_strategy="epoch",
+        fp16=True,
+        dataloader_num_workers=4,  # or 8 on Windows
+        dataloader_pin_memory = True,
         learning_rate=training_config["learning_rate"],
         per_device_train_batch_size=training_config["batch_size"],
         per_device_eval_batch_size=training_config["batch_size"],

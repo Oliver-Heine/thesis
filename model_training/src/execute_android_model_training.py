@@ -46,11 +46,11 @@ def main(config_path: str):
     device = get_device()
 
     for model_name in config["models"]:
-        os.makedirs(f"../evaluation_results/{model_name}/ConfusionMatrix", exist_ok=True)
-        os.makedirs(f"../evaluation_results/{model_name}/ROC", exist_ok=True)
-        os.makedirs(f"../evaluation_results/{model_name}/Precision-recall", exist_ok=True)
-
         model_key = model_name.replace("/", "_")
+
+        os.makedirs(f"../evaluation_results/{model_key}/ConfusionMatrix", exist_ok=True)
+        os.makedirs(f"../evaluation_results/{model_key}/ROC", exist_ok=True)
+        os.makedirs(f"../evaluation_results/{model_key}/Precision-recall", exist_ok=True)
 
         tokenizer = build_tokenizer(model_name)
 
@@ -72,6 +72,8 @@ def main(config_path: str):
             tokenized_dataset = tokenize_dataset(dataset_dict, tokenizer)
 
             model = build_model(model_name, num_labels=2)
+            model.resize_token_embeddings(len(tokenizer))
+
             output_dir = f"output/{model_key}/fold_{fold}"
 
             trainer = train(
@@ -93,23 +95,28 @@ def main(config_path: str):
                 fold_data["test"],  # 👈 raw dataset (NOT tokenized!)
                 device,
                 model_key,
-                config["hf_train_version"],
                 fold
             ))
 
-            plot_confusion(labels, preds, model_key, config["hf_train_version"], fold)
-            plot_roc(labels, probs, model_key, config["hf_train_version"], fold)
-            plot_precision_recall(labels, probs, model_key, config["hf_train_version"], fold)
+            plot_confusion(labels, preds, model_key, fold)
+            plot_roc(labels, probs, model_key, fold)
+            plot_precision_recall(labels, probs, model_key, fold)
 
             append_result({
                 "model": model_key,
                 "fold": fold,
                 "accuracy": float(accuracy),
+                "specificity": float(specificity),
                 "precision": float(precision),
+                "avg_precision": float(avg_precision),
                 "recall": float(recall),
                 "f1": float(f1),
-                "auc": float(auc)
-            })
+                "auc": float(auc),
+                "tp": int(tp),
+                "tn": int(tn),
+                "fp": int(fp),
+                "fn": int(fn)
+                })
 
             # 💾 Update checkpoint
             checkpoint.setdefault(model_key, {}).setdefault("completed_folds", []).append(fold)
