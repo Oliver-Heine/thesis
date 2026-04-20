@@ -72,13 +72,6 @@ class MetricsCollector(private val context: Context) {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         val currentNow = bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
 
-        // Convention (on most devices):
-        // negative = discharging
-        // positive = charging
-        return if (currentNow < 0) {
-            -currentNow.toFloat() // convert to positive discharge value
-        } else {
-            0f // ignore charging
-        }
+        return currentNow.toFloat()
     }
 }
