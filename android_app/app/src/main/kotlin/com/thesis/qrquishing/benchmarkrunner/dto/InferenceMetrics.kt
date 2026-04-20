@@ -8,5 +8,7 @@ data class InferenceMetrics(
     val p99LatencyMs: Double,
     val minLatencyMs: Double,
     val maxLatencyMs: Double,
+    val batteryMah: Float,
+    val batteryMahPerInference: Float,
     val chunkStats: List<ChunkStats>,
 )

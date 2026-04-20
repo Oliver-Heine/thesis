@@ -23,13 +23,15 @@ class ResultExporter(private val context: Context) {
                 appendLine("P99 Latency (ms),${metrics.p99LatencyMs}")
                 appendLine("Min Latency (ms),${metrics.minLatencyMs}")
                 appendLine("Max Latency (ms),${metrics.maxLatencyMs}")
+                appendLine("Total Battery Usage (mah),${metrics.batteryMah}")
+                appendLine("Per Inference Battery Usage (mah),${metrics.batteryMahPerInference}")
                 appendLine("")
 
                 appendLine("ChunkIndex,AvgLatencyMs,SampleCount,ChunkRunTime,AvgBatteryCurrentUa")
                 metrics.chunkStats.forEach { chunk ->
                     appendLine(
                         "${chunk.chunkIndex},${chunk.avgLatencyMs},${chunk.sampleCount}," +
-                                "${chunk.chunkRunTime},${chunk.avgBatteryCurrentUa}"
+                                "${chunk.chunkRunTime}"
                     )
                 }
 
