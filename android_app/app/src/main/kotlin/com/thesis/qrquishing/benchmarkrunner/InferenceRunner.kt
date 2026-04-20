@@ -68,8 +68,8 @@ class InferenceRunner(
             Log.d("Benchmark", "Chunk $chunkIndex → avg=${"%.2f".format(chunkLatencies.average())} ms")
         }
         val batteryMahEnd = metricsCollector.getBatteryDischargeMah()
-        val batteryMah = batteryMahStart - batteryMahEnd
-        val batteryMahPerInference = batteryMah / chunkSize
+        val batteryMah = (batteryMahStart - batteryMahEnd) / 1000
+        val batteryMahPerInference = batteryMah / 10000
 
         return metricsCollector.computeMetrics(batteryMah, batteryMahPerInference)
     }

@@ -143,3 +143,4 @@ docker-compose.override.yml
 *.swp
 *.swo
 *~
+model_training/src/data/*
