@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.BatteryManager
 import com.thesis.qrquishing.benchmarkrunner.dto.ChunkStats
 import com.thesis.qrquishing.benchmarkrunner.dto.InferenceMetrics
-import java.io.RandomAccessFile
 
 class MetricsCollector(private val context: Context) {
 
@@ -22,7 +21,6 @@ class MetricsCollector(private val context: Context) {
         totalSamples += latenciesChunk.size
 
         val avgLatency = latenciesChunk.average()
-        val avgBatteryCurrent = getBatteryDischargeUa()
 
         chunkStats.add(
             ChunkStats(
@@ -30,7 +28,6 @@ class MetricsCollector(private val context: Context) {
                 avgLatencyMs = avgLatency,
                 sampleCount = latenciesChunk.size,
                 chunkRunTime = chunkTime,
-                avgBatteryCurrentUa = avgBatteryCurrent
             )
         )
     }
@@ -42,7 +39,7 @@ class MetricsCollector(private val context: Context) {
     }
 
     /** Compute final metrics */
-    fun computeMetrics(): InferenceMetrics {
+    fun computeMetrics(batteryMah: Float, batteryMahPerInference: Float): InferenceMetrics {
         val sorted = latencies.sorted()
         fun percentile(p: Double): Double {
             val index = ((p * (sorted.size - 1))).toInt()
@@ -57,6 +54,8 @@ class MetricsCollector(private val context: Context) {
             p99LatencyMs = percentile(0.99),
             minLatencyMs = sorted.firstOrNull() ?: 0.0,
             maxLatencyMs = sorted.lastOrNull() ?: 0.0,
+            batteryMah = batteryMah,
+            batteryMahPerInference = batteryMahPerInference,
             chunkStats = chunkStats.toList()
         )
     }
@@ -68,9 +67,9 @@ class MetricsCollector(private val context: Context) {
         totalSamples = 0
     }
 
-    private fun getBatteryDischargeUa(): Float {
+    fun getBatteryDischargeMah(): Float {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-        val currentNow = bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        val currentNow = bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
 
         return currentNow.toFloat()
     }

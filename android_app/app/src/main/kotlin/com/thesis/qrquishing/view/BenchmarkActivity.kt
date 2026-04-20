@@ -49,7 +49,7 @@ class BenchmarkActivity : AppCompatActivity() {
                 val loader = DatasetLoader()
                 val totalSamples = 10000
                 val chunkSize = 500
-                val warmupSamples = 100
+                val warmupSamples = 1000
 
                 for (modelName in models) {
                     // Load model in isolation

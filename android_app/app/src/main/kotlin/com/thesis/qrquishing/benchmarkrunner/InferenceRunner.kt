@@ -22,7 +22,7 @@ class InferenceRunner(
         context: Context,
         datasetLoader: DatasetLoader,
         chunkSize: Int = 10_000,
-        warmupSamples: Int = 100,
+        warmupSamples: Int = 1000,
         onChunkCompleted: ((chunkIndex: Int, chunkAvgMs: Double, totalProcessed: Int) -> Unit)? = null
     ): InferenceMetrics {
         Log.d("Benchmark", "Starting benchmark")
@@ -34,6 +34,7 @@ class InferenceRunner(
 
         var totalProcessed = 0
 
+        val batteryMahStart = metricsCollector.getBatteryDischargeMah()
         datasetLoader.streamDatasetInChunks(
             context = context,
             chunkSize = chunkSize
@@ -66,8 +67,11 @@ class InferenceRunner(
 
             Log.d("Benchmark", "Chunk $chunkIndex → avg=${"%.2f".format(chunkLatencies.average())} ms")
         }
+        val batteryMahEnd = metricsCollector.getBatteryDischargeMah()
+        val batteryMah = batteryMahStart - batteryMahEnd
+        val batteryMahPerInference = batteryMah / chunkSize
 
-        return metricsCollector.computeMetrics()
+        return metricsCollector.computeMetrics(batteryMah, batteryMahPerInference)
     }
 
     private fun warmup(

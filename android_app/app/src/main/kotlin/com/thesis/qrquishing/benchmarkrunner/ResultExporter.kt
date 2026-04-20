@@ -29,7 +29,7 @@ class ResultExporter(private val context: Context) {
                 metrics.chunkStats.forEach { chunk ->
                     appendLine(
                         "${chunk.chunkIndex},${chunk.avgLatencyMs},${chunk.sampleCount}," +
-                                "${chunk.chunkRunTime},${chunk.avgBatteryCurrentUa}"
+                                "${chunk.chunkRunTime},${chunk.avgBatteryCurrentMah}"
                     )
                 }
 
