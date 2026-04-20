@@ -3,18 +3,25 @@ import inspect
 from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
-
 def train(model, tokenized_dataset, tokenizer, training_config, model_name, output_dir="fine-tuned-models"):
     # Data collator to dynamically pad sequences
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+    fp=True
+    numWorkers=4
+    pin_memory=True
+
+    if ("microsoft_deberta-v3-base" in model_name):
+        fp=False
+        numWorkers=0
+        pin_memory=True
 
     # Define Hugging Face training arguments
     training_args_kwargs = dict(
         output_dir=output_dir,
         save_strategy="epoch",
-        fp16=True,
-        dataloader_num_workers=4,  # or 8 on Windows
-        dataloader_pin_memory = True,
+        fp16=fp,
+        dataloader_num_workers=numWorkers,  # or 8 on Windows
+        dataloader_pin_memory=pin_memory,
         learning_rate=training_config["learning_rate"],
         per_device_train_batch_size=training_config["batch_size"],
         per_device_eval_batch_size=training_config["batch_size"],
