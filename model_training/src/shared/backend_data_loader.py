@@ -201,12 +201,22 @@ def transform_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     token_columns = [f"{f}_token" for f in NUMERICAL_FEATURES + BOOLEAN_FEATURES]
     df["text"] = df["domain"].apply(normalize_url) + " " + df[token_columns].agg(" ".join, axis=1)
 
-    return df[["text", "label"]]
+    return df[["text", "result"]]
 
 
 # ---------------------------
 # Dataset Loading
 # ---------------------------
+
+def load_raw_dataset(dataset_config):
+    logger.info(f"Loading dataset: {dataset_config['path']}")
+    dataframe = pd.read_csv(dataset_config["path"])
+
+    logger.info("Transforming dataset (vectorized)...")
+    dataframe = transform_dataframe(dataframe)
+    logger.info("Transformation complete.")
+
+    return dataframe
 
 def load_dataset_from_config(dataset_config):
 
@@ -225,7 +235,7 @@ def load_dataset_from_config(dataset_config):
 
     dataset = Dataset.from_pandas(dataframe)
 
-    dataset = dataset.cast_column("label", ClassLabel(num_classes=2, names=["0", "1"]))
+    dataset = dataset.cast_column("result", ClassLabel(num_classes=2, names=["0", "1"]))
 
     # ---------------------------
     # Splitting
@@ -293,7 +303,7 @@ def tokenize_dataset(dataset, tokenizer, max_length):
         remove_columns=["text"]
     )
 
-    tokenized_dataset = tokenized_dataset.rename_column("label", "labels")
+    tokenized_dataset = tokenized_dataset.rename_column("result", "labels")
 
     tokenized_dataset.set_format(
         "torch",

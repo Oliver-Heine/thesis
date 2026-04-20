@@ -118,7 +118,6 @@ def main(config_path: str):
                 "fn": int(fn)
                 })
 
-            # 💾 Update checkpoint
             checkpoint.setdefault(model_key, {}).setdefault("completed_folds", []).append(fold)
             save_checkpoint(checkpoint)
             trainer.push_to_hub(commit_message=f"{model_key} fold {fold}")

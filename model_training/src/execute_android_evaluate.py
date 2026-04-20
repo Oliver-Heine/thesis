@@ -57,7 +57,7 @@ def predict_batch(texts, tokenizer, model, device):
         return_tensors="pt",
         padding=True,
         truncation=True,
-        max_length=128
+        max_length=256
     )
 
     inputs.pop("token_type_ids", None)
